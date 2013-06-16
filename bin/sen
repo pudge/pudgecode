@@ -1,0 +1,615 @@
+#!/usr/local/bin/perl
+use warnings;
+use strict;
+use feature ':5.10';
+
+=head1 NAME
+
+sen - Access to Sony Entertainment Network Store API
+
+=head1 DESCRIPTION
+
+F<sen> is an interactive command shell for talking to SEN and playing with its
+data.
+
+=head1 USAGE
+
+    $ sen
+    sen> login ps3@pudge.net
+      Logging in as ps3@pudge.net ...
+    Please enter your password: 
+      logging in
+    sen> r
+      getting download list
+    1853 downloads available.
+    sen> s --online --ext Joe Danger 2
+      searching
+      Found 2 results, printing 1.
+         Joe Danger 2: The Movie
+           UP2034-NPUB31064_00-PS3ST_JOEDANGER2
+    sen> d UP2034-NPUB31064_00-PS3ST_JOEDANGER2                                                                                                                                                               
+      adding download
+    sen> q
+
+=cut
+
+use GetOpt::Long; # --debug?
+use Term::ReadLine;
+use Data::Dumper;
+use Date::Parse;
+use Image::Size;
+use File::Temp 'tempfile';
+
+use Pudge::SonyEntertainmentNetwork;
+use Pudge::DeliciousLibrary;
+
+=pod
+
+=head1 COMMANDS
+
+    login       [--save] LOGIN            // login with LOGIN
+    q|quit                                // quit
+    l|list      [--ext] IDX               // lists items in download list
+    n|next                                // continue listing
+    r|reload                              // reload download list
+    s|search    [--online --ext] TEXT     // search for product, with optional
+                                          // extra info (diff semantics online)
+    i|info      [--catalog --dump] PROD   // display info (dump data)
+    p|addons    [--owned] PROD            // show add-ons (all or owned)
+    d|download  PROD                      // set to download
+    u|unassign  PROD                      // set to "not downloaded" in catalog
+    a|assign    PROD                      // set to "downloaded" in catalog
+    c|catalog   [--update]                // insert into (+update) the catalog
+
+PROD = an index from the download list, or a product ID
+
+=cut
+
+my %cmds = (
+    'login'         => \&login,         # TBD: accept username, prompt for pass
+    'q|quit'        => \&quit,
+    'l|list'        => \&list,
+    'n|next'        => \&_next,
+    'r|reload'      => \&reload,
+    's|search'      => \&search,
+    'i|info'        => \&info,
+    'p|addons'      => \&addons,
+    'd|download'    => \&download,
+    'a|assign'      => \&assign_downloaded,
+    'u|unassign'    => \&unassign_downloaded,
+    'c|catalog'     => \&catalog,
+);
+
+for my $k (keys %cmds) {
+    (my $n = $k) =~ s/\|/\\b|/g;
+    $cmds{$n} = delete $cmds{$k};
+}
+
+$Data::Dumper::Terse    = 1;
+$Data::Dumper::Sortkeys = \&_main_filter;
+binmode STDOUT, ':encoding(UTF-8)';
+sub msg ($) { say "  $_" for @_ }
+
+my $sen         = new Pudge::SonyEntertainmentNetwork { debug => 1 };
+my $logged_in   = 0;
+my $dl          = new Pudge::DeliciousLibrary;
+my $histfile    = $sen->local_path . 'histfile';
+my $term = new Term::ReadLine;
+my @content_types = (
+    'Disc Only', 'Extra Episode', 'Full Game', 'Game',
+    'PS one Classic', 'PS2 Classic', 'PSN Game', 'minis'
+);
+my $content_types       = join '|', @content_types;
+my $content_types_re    = qr/^(?:$content_types)$/i;
+
+my(%override);
+{
+    for my $t (qw(skip keep)) {
+        my $y = $override{$t} = {};
+        my $x = $sen->_file_input($t);
+        if ($x) {
+            for (split /\n/, $x) {
+                $y->{$_} = 1;
+            }
+        }
+    }
+}
+
+
+{
+    _load_history();
+    _print_download_stats();
+
+    MAIN: while (defined (my $l = $term->readline('sen> '))) {
+        chomp $l;
+        next unless $l;
+
+        my($cmd, $m) = $l =~ /^([\w\|]+)(?: (.*))?$/;
+        if ($cmd) {
+            for my $k (keys %cmds) {
+                if ($cmd =~ /^$k$/) {
+                    $cmds{$k}->($m);
+                    next MAIN;
+                }
+            }
+        }
+
+        print "'$l' not recognized\n";
+    }
+}
+
+sub END {
+    _save_history();
+}
+
+###############################################################################
+# main
+
+sub login {
+    my($m) = @_;
+    my($opt, $match) = _get_options($m);
+
+    my($u, $p) = @_;
+    if ($match) {
+        $match =~ s/\s+//g;
+        msg "Logging in as $match ...";
+
+        local $| = 1;
+
+        print "Please enter your password: ";
+        qx(stty -echo); END { qx(stty echo) }
+        my $pass = <STDIN>; chomp $pass;
+        qx(stty echo);
+        print "\n";
+
+        $u = $match;
+        $p = $pass;
+    }
+
+    if ( (defined($u) && defined($p)) || !$logged_in) {
+        $sen->login($u, $p, $opt->{save});
+        $logged_in++;
+    }
+}
+
+sub quit { exit }
+
+{ my $idx; my $ext;
+sub list {
+    my($m) = @_;
+    my($opt, $match) = _get_options($m);
+    $ext = $opt->{ext};
+
+    $match =~ s/\s+//g if $match;
+    $idx = defined($match) && length($match) && $match !~ /\D/
+        ? $match
+        : 0;
+
+    my $list = $sen->download_list;
+    my $h = _window_height() || 40;
+    my $z = $h-4;
+    $z /= 2 if $ext;
+
+    for ($idx .. $idx+$z) {
+        $idx = $_;
+        _print_info($list->by_idx($idx), $idx, $ext);
+        last if $idx >= $list->size-1;
+    }
+    $idx++;
+    msg "Type n for next page" unless $idx >= $list->size-1;
+}
+
+sub _next { list($ext ? "--ext $idx" : $idx) }
+}
+
+sub reload {
+    login();
+    $sen->fetch_download_list;
+    _print_download_stats();
+}
+
+sub search {
+    my($m) = @_;
+    my($opt, $match) = _get_options($m);
+    my $ext = $opt->{ext} ? 1 : 0;
+
+    if ($opt->{online}) {
+        my($json, $links) = $sen->online_search($match);
+
+        if (!$json) {
+            msg "No results found.";
+            return;
+        }
+
+        msg sprintf("Found %d results, printing %d.", $json->{total_results}, scalar(@$links));
+
+        for my $i ( 0 .. ($#$links) ) {
+            my $d = $links->[$i];
+            _print_info($d, undef, $ext);
+        }
+    }
+    else {
+        for my $i ( 0 .. ($sen->download_list->size-1) ) {
+            my $d = $sen->download_list->by_idx($i);
+            next unless $d->name =~ /$match/;
+            _print_info($d, $i, $ext);
+        }
+    }
+}
+
+sub info {
+    my($m) = @_;
+    my($opt, $matches, $extra) = _get_options($m, 1);
+
+    for my $i (@$matches) {
+        my $d = _get_item($i);
+        next unless $d;
+        _print_info($d, $i, 1);
+
+        if ($extra) {
+            for my $h (@$extra) {
+                my @x = split /\./, $h;
+                my $y = $d;
+                for my $l (@x) {
+                    $y = $y->{$l};
+                    last if !$y;
+                }
+                if (!$y) {
+                    say "       Can't find '$h'";
+                    next;
+                }
+                if (ref $y) {
+                    _page_data(Dumper({$h => $y}));
+                }
+                else {
+                    say "       $h: $y";
+                }
+            }
+        }
+
+        if ($opt->{dump}) {
+            _page_data(Dumper($d));
+        }
+
+        if ($opt->{catalog}) {
+            my $info = _get_cat_item_by_id($d->id);
+
+            if ($info) {
+                local $Data::Dumper::Sortkeys = \&_dl_filter;
+                _page_data(Dumper($info));
+            }
+            else {
+                say sprintf("      %s not found in %s",  $d->id, $dl);
+            }
+        }
+    }
+}
+
+sub addons {
+    my($m) = @_;
+    my($opt, $matches, $extra) = _get_options($m, 1);
+
+    for my $i (@$matches) {
+        my $d = _get_item($i);
+        my($json, $addons) = $sen->addons($d->id, $opt->{owned});
+
+        if (!$addons) {
+            msg "No results found.";
+            return;
+        }
+
+        #msg sprintf("Found %d results, printing %d.", $json->{total_results}, scalar(@$addons));
+        for my $addon (@$addons) {
+            _print_info($addon, undef, 1);
+        }
+    }
+}
+
+sub download {
+    my($m) = @_;
+
+    my($opt, $matches, $extra) = _get_options($m, 1);
+    my @ids;
+
+    for my $i (@$matches) {
+        my $d = _get_item($i);
+        if (!$d && $i =~ /\D/) {
+            push @ids, $i;
+        }
+        elsif ($d) {
+            push @ids, $d->id;
+        }
+    }
+
+    if (@ids) {
+        login();
+        $sen->add_download(@ids);
+    }
+}
+
+sub assign_downloaded {
+    my($m) = @_;
+    _set_downloaded($m, 1);
+}
+
+sub unassign_downloaded {
+    my($m) = @_;
+    set_downloaded($m, 0);
+}
+
+sub catalog {
+    my($m) = @_;
+    my($opt) = _get_options($m);
+
+    my $i = 0;
+    local $| = 1;
+    my %seen;
+    for my $item (@{$sen->download_list->list}) {
+        $i++; print "\rItems: $i";
+        for my $id ($item->productId, $item->entitlementId) {
+            next if $override{skip}{$id};
+            next if $seen{$id}++;
+            next if $item->firstPlayExpiration; # trial/timed demo
+
+            my $data = $sen->get_product_data($id);
+            next unless $data;
+
+            next unless $data->content_type;
+            if ($data->content_type !~ $content_types_re) {
+                next unless $override{keep}{$id};
+            }
+
+            my $img     = $sen->get_product_image($id);
+            my $img_s   = $sen->get_product_image_small($id);
+
+            my %ins;
+            $ins{title}         = $data->name;
+            $ins{serial_no}     = $id;
+            $ins{url}           = $sen->prod_url . $id;
+            $ins{published}     = $data->release_date;
+            $ins{purchased}     = $item->availableDate;
+            $ins{published}     ||= $ins{purchased};
+            $ins{audience}      = $data->age_limit if defined $data->age_limit;
+            $ins{creators}      = _md($data, 'developer') || [$data->provider_name];
+            $ins{publishers}    = _md($data, 'publisher') || [$data->provider_name];
+            $ins{genres}        = _md($data, 'genre', 'topic', 'concept_source', 'video_style', 'reputation', 'scenario', 'audience', 'story_type', 'mood', 'setting_physical_environment', 'visual_style', 'setting_time_period', 'setting_actual_location');
+            $ins{platforms}     = _md($data, 'playable_platform');
+            $ins{features}      = _md($data, 'game_feature', 'perspective', 'play_type');
+            $ins{edition}       = [$data->content_type];
+            $ins{desc}          = $data->long_desc;
+            $ins{owner}         = $sen->username;
+
+            $ins{audience} =
+                $ins{audience} eq  6 ? 'Everyone' :
+                $ins{audience} eq 10 ? 'Everyone 10+' :
+                $ins{audience} eq 13 ? 'Teen' :
+                $ins{audience} eq 17 ? 'Mature' :
+                $ins{audience};
+
+            my $players = _md($data, 'number_of_players');
+            if ($players) {
+                my($min, $max) = $players->[0] =~ /^(\d+)(?:\s*-\s*(\d+))?$/;
+                $min //= $players->[0];
+                $max //= $min if $min && $min =~ /^\d+$/;
+                $ins{min_players} = $min || 1;
+                $ins{max_players} = $max || undef;
+            }
+
+            if ($img) {
+                my($w, $h, $t) = imgsize(\$img);
+                $ins{img}   = $img;
+                $ins{img_h} = $h;
+                $ins{img_w} = $w;
+                $ins{img_s} = $img_s;
+            }
+
+            $ins{title} =~ s/\s+Full\s+Game(?:\s+Unlock)?\s*$//;
+            $ins{title} =~ s/\s+Pack\s*$//;
+
+            #msg "saving $ins{title} : $id";
+            $dl->create(VideoGame => \%ins);
+        }
+    }
+}
+
+###############################################################################
+# catalog utils
+
+sub _get_cat_item_by_id {
+    my($i) = @_;
+    my $d = _get_item($i);
+    return unless $d;
+
+    $dl->fetch($d->id);
+}
+
+sub _set_downloaded {
+    my($m, $bool) = @_;
+
+    my($opt, $matches, $extra) = _get_options($m, 1);
+
+    for my $i (@$matches) {
+        my $d = _get_item($i);
+        return unless $d;
+        $dl->update({ ZHASEXPERIENCED => $bool }, $d->id);
+    }
+}
+
+sub is_downloaded {
+    my($id) = @_;
+    my $d = _get_cat_item_by_id($id);
+    $d && $d->{ZHASEXPERIENCED};
+}
+
+sub _md {
+    my($data, @key) = @_;
+    my @foo;
+    for my $key (@key) {
+        if ($data->{metadata}{$key}{values}) {
+            push @foo, @{$data->{metadata}{$key}{values}};
+        }
+    }
+
+    return @foo ? \@foo : undef;
+}
+
+
+###############################################################################
+# info utils
+
+sub _get_item {
+    my($i) = @_;
+
+    my $info;
+    if ($i !~ /\D/) {
+        $i = _get_dl_item_by_idx($i);
+        $i = $i->id if ($i);
+    }
+
+    $sen->get_product_data($i) if $i;
+}
+
+sub _get_dl_item_by_idx {
+    my($i) = @_;
+
+    if ($i !~ /^\d+$/) {
+        warn "$i must be an int\n";
+        return;
+    }
+
+    my $d = $sen->download_list->by_idx($i);
+    if (!$d) {
+        warn "$i not found\n";
+        return;
+    }
+
+    $d;
+}
+
+sub _print_info {
+    my($d, $i, $e) = @_;
+
+    my $strf = "     %s\n";
+    my @args = ($d->name);
+    if (defined $i && $i !~ /\D/) {
+        $strf = "% 6d %s\n";
+        unshift @args, $i;
+    }
+
+    if ($e) {
+        $strf .= "       %s\n";
+        push @args, $d->id;
+    }
+
+#     my $dl = is_downloaded($i);
+#     if (defined $dl) {
+#         $strf =~ s/\n/ (%s)\n/;
+#         push @args, $dl;
+#     }
+
+    printf $strf, @args;
+}
+
+
+###############################################################################
+# utils
+
+sub _dl_filter {
+    my($hash) = @_;
+    return [ sort grep !/DATA$/, keys %$hash ];
+}
+
+sub _main_filter {
+    my($hash) = @_;
+    return [
+        sort grep { $_ ne 'sen' } keys %$hash
+    ];
+}
+
+sub _print_download_stats {
+    printf "%d downloads available.\n", $sen->download_list->size;
+}
+
+sub _load_history {
+    my $fh;
+    if (open $fh, '<', "$ENV{HOME}/.sen/histfile") {
+        while (<$fh>) {
+            chomp;
+            $term->AddHistory($_);
+        }
+        close $fh;
+    }
+}
+
+sub _save_history {
+    if ($term) {
+        my @hist = $term->GetHistory;
+        if (@hist) {
+            open my $fh, '>', "$ENV{HOME}/.sen/histfile";
+            print $fh join "\n", @hist;
+        }
+    }
+}
+
+sub _get_options {
+    my($str, $get_items) = @_;
+    $str //= '';
+
+    my %opt;
+    while ($str =~ s/^\s*--(\w+)\s*//g) {
+        $opt{$1} = 1;
+    }
+
+    if ($get_items) {
+        my(@matches, @extra);
+        while ($str =~ /(\S+)/g) {
+            my $x = $1;
+            if ($x =~ /^[A-Z0-9_-]+$/) {
+                push @matches, $x;
+            }
+            else {
+                push @extra, $x;
+            }
+        }
+        return(\%opt, \@matches, \@extra);
+    }
+    else {
+        return(\%opt, $str);
+    }
+}
+
+sub _page_cmd {
+    my($cmd) = @_;
+    system("$cmd | less");
+}
+
+sub _page_data {
+    my($data) = @_;
+    my($fh, $filename) = tempfile();
+    print $fh $data;
+    system('less', $filename);
+}
+
+sub _window_height {
+    my($h, $w) = split ' ', `stty size`;
+    return $h;
+}
+
+__END__
+
+=head1 CATALOG
+
+F<sen> can insert data to, and read from, a catalog.  Currently only
+Delicious Library is supported.
+
+=head1 TODO
+
+Allow PROD to be the result of `--search [--online] TEXT`?
+
+C<catalog --update> not implemented.
+
+Nail down differences between entitlementId and productId.
+
+=head1 AUTHOR
+
+Pudge

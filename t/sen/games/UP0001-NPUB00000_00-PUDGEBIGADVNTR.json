@@ -1,0 +1,346 @@
+{
+   "game_contentType" : "Full Game",
+   "restricted" : false,
+   "metadata" : {
+      "original_language" : {
+         "name" : "Original Language",
+         "values" : [
+            "English"
+         ]
+      },
+      "distribution_territory" : {
+         "name" : "distribution_territory",
+         "values" : [
+            "China",
+            "Japan",
+            "Korea, Republic of",
+            "Singapore",
+            "United Kingdom",
+            "United States"
+         ]
+      },
+      "game_subgenre" : {
+         "name" : "subgenre",
+         "values" : [
+            "PLATFORMER"
+         ]
+      },
+      "perspective" : {
+         "name" : "Perspective",
+         "values" : [
+            "Side View"
+         ]
+      },
+      "game_genre" : {
+         "name" : "Genre",
+         "values" : [
+            "ACTION"
+         ]
+      },
+      "primary_classification" : {
+         "name" : "primary_classification",
+         "values" : [
+            "PREMIUM_GAME"
+         ]
+      },
+      "publisher" : {
+         "name" : "Publisher(s)",
+         "values" : [
+            "SCE WWS",
+            "Sony Computer Entertainment America"
+         ]
+      },
+      "subgenre" : {
+         "name" : "subgenre",
+         "values" : [
+            "PLATFORMER"
+         ]
+      },
+      "topic" : {
+         "name" : "Topic",
+         "values" : [
+            "Puzzles"
+         ]
+      },
+      "secondary_classification" : {
+         "name" : "secondary_classification",
+         "values" : [
+            "GAME"
+         ]
+      },
+      "concept_source" : {
+         "name" : "Concept Source",
+         "values" : [
+            "Video Game"
+         ]
+      },
+      "video_style" : {
+         "name" : "Video Style",
+         "values" : [
+            "Cutout Animation",
+            "Model Animation"
+         ]
+      },
+      "number_of_players" : {
+         "name" : "Number Of Players",
+         "values" : [
+            "1-4"
+         ]
+      },
+      "genre" : {
+         "name" : "Genre",
+         "values" : [
+            "Action"
+         ]
+      },
+      "trophy" : {
+         "name" : "Trophy",
+         "values" : [
+            "5 Secret Trophies",
+            "Platinum ~ 100% Complete"
+         ]
+      },
+      "game_subtype" : {
+         "name" : "Game Subtype",
+         "values" : [
+            "Premium Game"
+         ]
+      },
+      "country_of_origin" : {
+         "name" : "Country Of Origin",
+         "values" : [
+            "United Kingdom"
+         ]
+      },
+      "playable_platform" : {
+         "name" : "playable_platform",
+         "values" : [
+            "PS3"
+         ]
+      },
+      "audience" : {
+         "name" : "Audience",
+         "values" : [
+            "General Audience"
+         ]
+      },
+      "container_type" : {
+         "name" : "Container Type",
+         "values" : [
+            "REPRESENTATIVE"
+         ]
+      },
+      "developer" : {
+         "name" : "Developer(s)",
+         "values" : [
+            "Pudge"
+         ]
+      },
+      "mood" : {
+         "name" : "Mood",
+         "values" : [
+            "Cerebral",
+            "Endearing",
+            "Upbeat",
+            "Whimsical"
+         ]
+      },
+      "difficulty_management" : {
+         "name" : "Difficulty",
+         "values" : [
+            "Tiered",
+            "Unlockable Difficulty Level",
+            "User Selectable"
+         ]
+      },
+      "platform" : {
+         "name" : "Platform",
+         "values" : [
+            "PlayStation 3"
+         ]
+      },
+      "play_type" : {
+         "name" : "Play Type",
+         "values" : [
+            "Cooperative",
+            "Emergent",
+            "Sandbox",
+            "Shared Screen"
+         ]
+      },
+      "peripheral" : {
+         "name" : "Peripheral",
+         "values" : [
+            "DualShock 3",
+            "Move Motion Controller",
+            "Move Navigation Controller",
+            "PlayStation Eye",
+            "Sixaxis"
+         ]
+      },
+      "game_content_rating" : {
+         "name" : "Game Content Rating",
+         "values" : [
+            "true"
+         ]
+      },
+      "game_type" : {
+         "name" : "Game Type",
+         "values" : [
+            "Game Edition"
+         ]
+      },
+      "visual_style" : {
+         "name" : "Visual Style",
+         "values" : [
+            "2.5D",
+            "Cartoony"
+         ]
+      },
+      "tertiary_classification" : {
+         "name" : "tertiary_classification",
+         "values" : [
+            "NA"
+         ]
+      },
+      "game_feature" : {
+         "name" : "Game Feature",
+         "values" : [
+            "Downloadable Content",
+            "Leaderboards",
+            "Mini-games",
+            "Multiplayer",
+            "Online",
+            "Single Player",
+            "Unlockable Content",
+            "User Generated Content"
+         ]
+      },
+      "gn_game_genre" : {
+         "name" : "gn_game_genre",
+         "values" : [
+            "Action"
+         ]
+      }
+   },
+   "id" : "UP0001-NPUB00000_00-PUDGEBIGADVNTR",
+   "links" : [],
+   "dob_required" : false,
+   "images" : [],
+   "title_name" : "Pudge's Big Adventure",
+   "release_date" : "2001-01-01T00:00:00Z",
+   "provider_name" : "Pudge",
+   "promomedia" : [],
+   "name" : "Pudge's Big Adventure",
+   "long_desc" : "Pudge's Big Adventure is awesome",
+   "content_descriptors" : [
+      {
+         "name" : "Comic Mischief",
+         "url" : null,
+         "description" : "Comic Mischief"
+      },
+      {
+         "name" : "Mild Cartoon Violence",
+         "url" : null,
+         "description" : "Mild Cartoon Violence"
+      },
+      {
+         "name" : "Online Interactions Not Rated by the ESRB",
+         "url" : null,
+         "description" : "Online Interactions Not Rated by the ESRB"
+      }
+   ],
+   "revision" : 26,
+   "age_limit" : 6,
+   "star_rating" : {
+      "count" : [
+         {
+            "count" : 252,
+            "star" : 1
+         },
+         {
+            "count" : 103,
+            "star" : 2
+         },
+         {
+            "count" : 430,
+            "star" : 3
+         },
+         {
+            "count" : 911,
+            "star" : 4
+         },
+         {
+            "count" : 7641,
+            "star" : 5
+         }
+      ],
+      "score" : "4.66",
+      "total" : "9337"
+   },
+   "attributes" : {},
+   "start" : 0,
+   "playable_platform" : [
+      "PS3"
+   ],
+   "short_name" : "Pudge's Big Adventure",
+   "relationships" : [],
+   "content_origin" : 0,
+   "size" : 20,
+   "media_layouts" : [],
+   "timestamp" : 1370513966409,
+   "container_type" : "product",
+   "skus" : [],
+   "default_sku" : {
+      "sku_type" : 0,
+      "platforms" : [
+         0,
+         1,
+         10
+      ],
+      "entitlements" : [
+         {
+            "feature_type_id" : 0,
+            "name" : "Pudge's Big Adventure",
+            "license_type" : 1,
+            "duration" : 0,
+            "description" : null,
+            "exp_after_first_use" : 0,
+            "type" : 2,
+            "id" : "UP0001-NPUB00000_00-PUDGEBIGADVNTR",
+            "use_count" : 0,
+            "drms" : [
+               {
+                  "drm_category_type" : 5,
+                  "is_streamable" : 0,
+                  "type" : 2,
+                  "id" : "UP0001-NPUB00000_00-PUDGEBIGADVNTR",
+                  "size" : 5029342176,
+                  "media_prop" : {}
+               }
+            ]
+         }
+      ],
+      "name" : "4.7 GB",
+      "eligibilities" : [],
+      "rewards" : [],
+      "charge_type_id" : 0,
+      "credit_card_required_flag" : 0,
+      "defaultSku" : true,
+      "end_date" : "",
+      "type" : "standard",
+      "price" : 0,
+      "id" : "UP0001-NPUB00000_00-PUDGEBIGADVNTR-UP00",
+      "display_price" : "$0.00"
+   },
+   "bucket" : "games",
+   "content_type" : "1",
+   "sort" : "static",
+   "total_results" : 1,
+   "top_category" : "downloadable_game",
+   "content_rating" : {
+      "rating_system" : "ESRB",
+      "url" : "https://store.sonyentertainmentnetwork.com/store/api/chihiro/00_09_000/images/ratings/games/esrb_rating_US_E.jpg"
+   },
+   "sku_links" : []
+}
