@@ -15,40 +15,59 @@ use Pudge::DeliciousLibrary;
 
 my $dl = new Pudge::DeliciousLibrary;
 my $export = "$Bin/";
-my $images = "${Bin}images/";
+my $images = "${export}images/";
 my $thumbs = "${images}thumbs/";
 
 mkdir $images;
 mkdir $thumbs;
 
-my @data;
+my $date_fmt = '%Y-%m-%d';
+
+my(%map, @rows);
 my $d = $dl->dbh->selectall_arrayref(
-    'select * from ZABSTRACTMEDIUM where ZTYPE="VideoGame" and Z_ENT=3',
+    'select * from ZABSTRACTMEDIUM where Z_ENT=3 and ZTYPE in ("VideoGame", "Book", "Movie", "Album")',
 { Slice => {} });
 
 for my $i (@$d) {
-    next if $i->{ZPLATFORMSCOMPOSITESTRING} && $i->{ZPLATFORMSCOMPOSITESTRING} =~ /(?:Electronic Game|Mac)/;
-
-# synopsis!
+    # none of these are used anymore, not playable or worth mentioning
+    next if $i->{ZTYPE} eq 'VideoGame' && $i->{ZPLATFORMSCOMPOSITESTRING} && $i->{ZPLATFORMSCOMPOSITESTRING} =~ /(?:Electronic Game|Mac)/;
+    # all my physical movies and music are digitized now, and will be input via
+    # iTunes / scripts (not the DL3 iTunes import, which doesn't do what I want)
+    # (it'd be nice to come up with a way to get my iBooks and Kindle data too)
+#    next if $i->{ZTYPE} =~ /^(?:Movie|Album)/ && (!$i->{ZFORMATSINGULARSTRING} || $i->{ZFORMATSINGULARSTRING} ne 'Digital');
 
     my %r = (
         pk          => $i->{Z_PK},
         serial      => $i->{ZSERIALNUMBER},
+        isbn        => $i->{ZISBN},
+        ean         => $i->{ZEAN},
+        type        => $i->{ZTYPE},
         title       => decode_utf8($i->{ZTITLE}),
         url         => $i->{ZASSOCIATEDURL},
         min_players => $i->{ZMINIMUMPLAYERS},
         max_players => $i->{ZMAXIMUMPLAYERS},
+        minutes     => $i->{ZMINUTES},
+        pages       => $i->{ZPAGES},
         audience    => _audience($i->{ZAUDIENCERECOMMENDEDAGESINGULARSTRING}),
-        platforms   => _list($i->{ZPLATFORMSCOMPOSITESTRING}),
+        platforms   => _plat($i->{ZPLATFORMSCOMPOSITESTRING}),
         edition     => _list($i->{ZEDITIONSCOMPOSITESTRING}),
         format      => $i->{ZFORMATSINGULARSTRING},
         features    => _list($i->{ZFEATURESCOMPOSITESTRING}),
         creators    => _list($i->{ZCREATORSCOMPOSITESTRING}),
         genres      => _list($i->{ZGENRESCOMPOSITESTRING}),
         publishers  => _list($i->{ZPUBLISHERSCOMPOSITESTRING}),
-        published   => time2str('%C', _date($i->{ZPUBLISHDATE})),
-        purchased   => time2str('%C', _date($i->{ZPURCHASEDATE})),
+        actors      => _list($i->{ZACTORSCOMPOSITESTRING}),
+        published   => _date($i->{ZPUBLISHDATE}),
+        purchased   => _date($i->{ZPURCHASEDATE}),
     );
+
+    my @searchStrs;
+    for my $z (qw(ZFEATURESCOMPOSITESTRING ZCREATORSCOMPOSITESTRING
+        ZGENRESCOMPOSITESTRING ZPUBLISHERSCOMPOSITESTRING
+        ZACTORSCOMPOSITESTRING ZEDITIONSCOMPOSITESTRING
+        ZFORMATSINGULARSTRING)) {
+        push @searchStrs, $i->{$z} if defined $i->{$z};
+    }
 
     if ($i->{ZCOVERIMAGETINYIMAGEDATA}) {
         my $thumb = "$thumbs$r{pk}.jpg";
@@ -63,30 +82,54 @@ for my $i (@$d) {
         print $ih $g->[0]{ZCOMPRESSEDIMAGEDATA};
     }
 
-    if ($i->{ZCOVERIMAGEDATAHOLDER}) {
-        my $g = $dl->dbh->selectall_arrayref('select * from ZABSTRACTSYNOPSIS where ZCONCEPTUALMEDIUM = ?', { Slice => {} }, $i->{Z_PK});
-        my $desc;
-        for my $d (@$g) {
-            $desc .= sprintf(qq{<div class="item_desc">%s</div><div class="item_desc_source">&mdash; %s</div>},
-                decode_utf8($d->{ZHTMLSTRING}), decode_utf8($d->{ZSOURCE})
-            );
-        }
-        $r{desc} = $desc;
+    my $g = $dl->dbh->selectall_arrayref('select * from ZABSTRACTSYNOPSIS where ZCONCEPTUALMEDIUM = ?', { Slice => {} }, $i->{Z_PK});
+    my $desc;
+    for my $d (@$g) {
+        $desc .= sprintf(qq{<div class="item_desc">%s</div><div class="item_desc_source">&mdash; %s</div>},
+            decode_utf8($d->{ZHTMLSTRING}), decode_utf8($d->{ZSOURCE})
+        );
+    }
+    $r{desc} = $desc;
+    if ($desc) {
+        push @searchStrs, $desc;
     }
 
-    push @data, \%r;
+    $map{ $r{pk} } = \%r;
+    push @rows, [
+        $r{pk},
+        '<img class="thumb show-info" src="images/thumbs/' . $r{pk} . '.jpg" height="40">',
+        '<span class="show-info">' . $r{title} . '</span>',
+        $r{audience},
+        join(', ', @{$r{platforms}}),
+        $r{type},
+        join(' ', @searchStrs)
+    ];
 }
 
 open my $fh, '>', "${export}data.js" or die $!;
-print $fh "libraryData = " . encode_json(\@data);
+print $fh "libraryArray = " . encode_json(\@rows) . ';';
+print $fh "libraryHash = " . encode_json(\%map) . ';';
 close $fh;
 
 sub _audience {
     my $a = shift || '';
-    $a eq  6 ? 'Everyone' :
-    $a eq 10 ? 'Everyone 10+' :
-    $a eq 13 ? 'Teen' :
-    $a eq 17 ? 'Mature' :
+
+    $a eq  6 ? 'E' :
+    $a eq 10 ? 'E10+' :
+    $a eq 13 ? 'T' :
+    $a eq 17 ? 'M' :
+
+    $a =~ /\bEveryone.?10/ ? 'E10+' :
+    $a =~ /\bEveryone\b/ ? 'E' :
+    $a =~ /\bTeen\b/ ? 'T' :
+    $a =~ /\bMature\b/ ? 'M' :
+
+    $a =~ /\bG\b/ ? 'G' :
+    $a =~ /\bPG\b/ ? 'PG' :
+    $a =~ /\bPG-?13\b/ ? 'PG-13' :
+    $a =~ /\bR\b/ ? 'R' :
+    $a =~ /\b(?:NR|Unrated)\b/ ? 'NR' :
+
     $a;
 }
 
@@ -105,4 +148,4 @@ sub _platform {
 
 sub _plat { [ $_[0] ? map { _platform($_) } split /\n/, decode_utf8($_[0]) : () ] }
 sub _list { [ $_[0] ? split /\n/, decode_utf8($_[0]) : () ] }
-sub _date { defined $_[0] ? $_[0]+978307200 : undef } # core data timestamps begin at unix epoch + 31 years
+sub _date { defined $_[0] ? time2str($date_fmt, $_[0]+978307200) : undef } # core data timestamps begin at unix epoch + 31 years

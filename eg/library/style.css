@@ -1,0 +1,93 @@
+.column-filter-widgets { width: 100%; float: left }
+.column-filter-widget { text-align: right }
+table.dataTable tr.odd,  table.dataTable tr.odd  td.sorting_1 { background: #eeeeee }
+table.dataTable tr.even, table.dataTable tr.even td.sorting_1 { background: #dddddd }
+
+body {
+    font-family: 'Lucida Grande', Verdana, Arial, Helvetica, sans-serif;
+    font-size: 75%;
+}
+
+#info, #library {
+    border: 1px solid black;
+    position: absolute;
+    width: 300px;
+    height: 600px;
+    margin: 0 auto;
+    overflow-y: scroll;
+    color: #000;
+
+    -webkit-overflow-scrolling: touch;
+}
+
+#library {
+    left: 320px;
+    width: 600px;
+    background: #fff;
+    padding: 2px;
+/*             overflow-x: hidden; */
+}
+
+#info {
+    background: #f3f3f3;
+    padding: 4px;
+}
+
+#info-img {
+    text-align: center;
+}
+
+#info-img img {
+    border: 1px solid #000;
+    height: 250px;
+}
+
+#info-title {
+    font-weight: bold;
+    font-size: 120%;
+    text-align: center;
+}
+
+#info-title a:link, a:visited, a:hover, a:active {
+    color: black;
+    text-decoration: none;
+}
+
+#info-subtitle {
+    font-size: 100%;
+    text-align: center;
+    padding-bottom: 10px;
+}
+
+#info-table tr {
+    display: none;
+}
+
+#info-table .info-table-head, #info-table .info-table-data {
+    vertical-align: top;
+    padding-bottom: 3px;
+}
+
+#info-table .info-table-head {
+    text-align: right;
+    color: #666;
+    padding-right: 10px;
+    white-space: nowrap;
+}
+
+#info-desc:before {
+    font-weight: bold;
+    content: "Synopses: ";
+}
+
+#info-desc {
+    padding-top: 10px;
+    display: none;
+}
+
+.item_desc_source {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    text-align: right;
+    font-style: italic;
+}
