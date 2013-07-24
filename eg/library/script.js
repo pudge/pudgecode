@@ -74,7 +74,7 @@ function platform(str) {
 
 function info_table_row(d, name) {
     var name2;
-    if (d[name] && typeof(d[name]) == 'object') { // post-process the audience/platform?
+    if (d[name] && typeof(d[name]) == 'object') { // post-process the audience/platform
         var arr;
         if (name == 'platforms') {
             arr = [];
@@ -104,13 +104,20 @@ function info_table_row(d, name) {
 function info_html(id) {
     var d = libraryHash[id];
 
-    $('#info-img').html('<img id="info-' + id + '-a" src="images/' + id + '.jpg">').show();
+    if (d.img)
+        $('#info-img').html('<img id="info-' + id + '-a" src="images/covers/' + id + '.jpg">').show();
+    else
+        $('#info-img').hide();
+
     if (d.url)
         $('#info-title').html('<a href="' + d.url +'" target="_blank">' + d.title + '</a>');
     else
         $('#info-title').html(d.title);
 
-    $('#info-subtitle').html(d.creators.join('<br>'));
+    if (d.creators.length)
+        $('#info-subtitle').html(d.creators.join('<br>')).show();
+    else
+        $('#info-subtitle').hide();
 
     for (var i in infoTableRows)
         info_table_row(d, infoTableRows[i]);
@@ -147,7 +154,7 @@ $(document).ready(function() {
         "fnDrawCallback": function( oSettings ) {
             $('.show-info').unbind().click(
                 function() {
-                    var id = $(this).parent().parent().first().first().html().match(/\d+/);
+                    var id = $(this).parent().parent().find('.show-info').attr('id').match(/\d+/);
                     if (id) {
                         info_html(id);
                         $('#info').animate({scrollTop: 0}, 0);

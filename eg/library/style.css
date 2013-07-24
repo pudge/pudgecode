@@ -28,6 +28,10 @@ body {
 /*             overflow-x: hidden; */
 }
 
+#library img.thumb {
+    height: 30px;
+}
+
 #info {
     background: #f3f3f3;
     padding: 4px;

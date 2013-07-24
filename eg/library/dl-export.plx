@@ -16,9 +16,11 @@ use Pudge::DeliciousLibrary;
 my $dl = new Pudge::DeliciousLibrary;
 my $export = "$Bin/";
 my $images = "${export}images/";
+my $covers = "${images}covers/";
 my $thumbs = "${images}thumbs/";
 
 mkdir $images;
+mkdir $covers;
 mkdir $thumbs;
 
 my $date_fmt = '%Y-%m-%d';
@@ -59,6 +61,7 @@ for my $i (@$d) {
         actors      => _list($i->{ZACTORSCOMPOSITESTRING}),
         published   => _date($i->{ZPUBLISHDATE}),
         purchased   => _date($i->{ZPURCHASEDATE}),
+        img         => !!$i->{ZCOVERIMAGEDATAHOLDER},
     );
 
     my @searchStrs;
@@ -69,18 +72,24 @@ for my $i (@$d) {
         push @searchStrs, $i->{$z} if defined $i->{$z};
     }
 
-    if ($i->{ZCOVERIMAGETINYIMAGEDATA}) {
-        my $thumb = "$thumbs$r{pk}.jpg";
+    my $thumb = "$thumbs$r{pk}.jpg";
+    my $image = "$covers$r{pk}.jpg";
+    if ($i->{ZCOVERIMAGEDATAHOLDER} && ! -f $image) {
+        my $g = $dl->dbh->selectall_arrayref('select * from ZCOVERIMAGEDATAHOLDER where Z_PK=?', { Slice => {} }, $i->{ZCOVERIMAGEDATAHOLDER});
+        open my $ih, '>', $image or warn "Can't open $image: $!\n";
+        print $ih $g->[0]{ZCOMPRESSEDIMAGEDATA};
+
+        system("cp $image $thumb >/dev/null 2>&1");
+        system("sips --resampleHeight 60 $thumb >/dev/null 2>&1") if -e $thumb;
+    }
+    elsif ($i->{ZCOVERIMAGETINYIMAGEDATA} && ! -f $thumb) {
         open my $th, '>', $thumb or warn "Can't open $thumb: $!\n";
         print $th $i->{ZCOVERIMAGETINYIMAGEDATA};
     }
-
-    if ($i->{ZCOVERIMAGEDATAHOLDER}) {
-        my $g = $dl->dbh->selectall_arrayref('select * from ZCOVERIMAGEDATAHOLDER where Z_PK=?', { Slice => {} }, $i->{ZCOVERIMAGEDATAHOLDER});
-        my $image = "$images$r{pk}.jpg";
-        open my $ih, '>', $image or warn "Can't open $image: $!\n";
-        print $ih $g->[0]{ZCOMPRESSEDIMAGEDATA};
+    elsif (! -f $thumb) {
+        undef $thumb;
     }
+
 
     my $g = $dl->dbh->selectall_arrayref('select * from ZABSTRACTSYNOPSIS where ZCONCEPTUALMEDIUM = ?', { Slice => {} }, $i->{Z_PK});
     my $desc;
@@ -90,14 +99,18 @@ for my $i (@$d) {
         );
     }
     $r{desc} = $desc;
-    if ($desc) {
-        push @searchStrs, $desc;
-    }
+#     if ($desc) {
+#         push @searchStrs, $desc;
+#     }
+    s/<.+?>/ /g for @searchStrs;
 
     $map{ $r{pk} } = \%r;
     push @rows, [
         $r{pk},
-        '<img class="thumb show-info" src="images/thumbs/' . $r{pk} . '.jpg" height="40">',
+        ($thumb
+            ? '<img class="thumb show-info" id="pk_' . $r{pk} . '" src="images/thumbs/' . $r{pk} . '.jpg">'
+            : '<span class="show-info" id="pk_' . $r{pk} . '">&nbsp;</span>'
+        ),
         '<span class="show-info">' . $r{title} . '</span>',
         $r{audience},
         join(', ', @{$r{platforms}}),
@@ -107,7 +120,7 @@ for my $i (@$d) {
 }
 
 open my $fh, '>', "${export}data.js" or die $!;
-print $fh "libraryArray = " . encode_json(\@rows) . ';';
+print $fh "libraryArray = " . encode_json(\@rows) . ";\n";
 print $fh "libraryHash = " . encode_json(\%map) . ';';
 close $fh;
 
