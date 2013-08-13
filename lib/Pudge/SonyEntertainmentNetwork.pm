@@ -201,10 +201,11 @@ sub add_download {
 
     my @data;
     for (@id) {
+        print "  adding $_\n" if $self->debug > 1;
         push @data, { platformString => 'ps3', contentId => $_ };
     }
 
-    say "  adding download" if $self->debug;
+    say "  adding downloads" if $self->debug;
     my $req = HTTP::Request->new(POST => $self->session_url . 'user/notification/download');
     $req->content_type('application/json');
     $req->content(encode_json(\@data));

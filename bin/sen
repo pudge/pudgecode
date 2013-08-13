@@ -312,7 +312,7 @@ sub download {
     my @ids;
 
     for my $i (@$matches) {
-        my $d = _get_item($i);
+        my $d = _get_dl_item($i);
         if (!$d && $i =~ /\D/) {
             push @ids, $i;
         }
@@ -345,7 +345,8 @@ sub catalog {
     local $| = 1;
     my %seen;
     for my $item (@{$sen->download_list->list}) {
-        $i++; print "\rItems: $i";
+        $i++;
+        print "\rItems: $i";
         for my $id ($item->productId, $item->entitlementId) {
             next if $override{skip}{$id};
             next if $seen{$id}++;
@@ -458,32 +459,22 @@ sub _md {
 # info utils
 
 sub _get_item {
-    my($i) = @_;
+    my($id) = @_;
 
-    my $info;
-    if ($i !~ /\D/) {
-        $i = _get_dl_item_by_idx($i);
-        $i = $i->id if ($i);
-    }
-
-    $sen->get_product_data($i) if $i;
-}
-
-sub _get_dl_item_by_idx {
-    my($i) = @_;
-
-    if ($i !~ /^\d+$/) {
-        warn "$i must be an int\n";
-        return;
-    }
-
-    my $d = $sen->download_list->by_idx($i);
-    if (!$d) {
-        warn "$i not found\n";
-        return;
-    }
+    my $i = _get_dl_item($id);
+    my $d = $sen->get_product_data($i->id);
+    $d    = $sen->get_product_data($i->productId) unless $d;
 
     $d;
+}
+
+sub _get_dl_item {
+    my($i) = @_;
+    return unless defined $i && length $i;
+
+    $i =~ /\D/
+        ? $sen->download_list->by_id($i)
+        : $sen->download_list->by_idx($i);
 }
 
 sub _print_info {
@@ -501,11 +492,10 @@ sub _print_info {
         push @args, $d->id;
     }
 
-#     my $dl = is_downloaded($i);
-#     if (defined $dl) {
-#         $strf =~ s/\n/ (%s)\n/;
-#         push @args, $dl;
-#     }
+    my $dl = is_downloaded($i);
+    if ($dl) {
+        $strf =~ s/\n/ \N{U+2713}\n/;
+    }
 
     printf $strf, @args;
 }
