@@ -216,14 +216,22 @@ sub fetch {
 
 sub _update {
     my($self, $id, $data, $img, $desc) = @_;
+    return 0 unless $id;
 
     $data->{ZLASTMODIFICATIONDATE}  //= _now();
 
-    $self->_do_update(ZABSTRACTMEDIUM => $data, $id);
-    $self->_insert_image($id, $img);
-    $self->_insert_desc($id, $desc);
+    $self->_do_update(ZABSTRACTMEDIUM => $data, $id) if $data;
+    $self->_insert_image($id, $img) if $img;
+    $self->_insert_desc($id, $desc) if $desc;
 
     $id;
+}
+
+sub update {
+    my($self, $id, $data, $img, $desc) = @_;
+    return 0 unless $id;
+
+    $self->_update( $self->_get_existing_record_id($id), $data, $img, $desc );
 }
 
 sub create {

@@ -39,13 +39,14 @@ use Data::Dumper;
 use Date::Parse;
 use Image::Size;
 use File::Temp 'tempfile';
+use Pod::Usage;
 
 use Pudge::SonyEntertainmentNetwork;
 use Pudge::DeliciousLibrary;
 
 =pod
 
-=head1 COMMANDS
+=head1 OPTIONS
 
     login       [--save] LOGIN            // login with LOGIN
     q|quit                                // quit
@@ -60,6 +61,9 @@ use Pudge::DeliciousLibrary;
     u|unassign  PROD                      // set to "not downloaded" in catalog
     a|assign    PROD                      // set to "downloaded" in catalog
     c|catalog   [--update]                // insert into (+update) the catalog
+    o|open      PROD                      // open game in web client
+
+    h|help                                // this help
 
 PROD = an index from the download list, or a product ID
 
@@ -78,6 +82,8 @@ my %cmds = (
     'a|assign'      => \&assign_downloaded,
     'u|unassign'    => \&unassign_downloaded,
     'c|catalog'     => \&catalog,
+    'o|open'        => \&open_url,
+    'h|help'        => \&help,
 );
 
 for my $k (keys %cmds) {
@@ -144,6 +150,10 @@ sub END {
 
 ###############################################################################
 # main
+
+sub help {
+    pod2usage({ -exitval => 'NOEXIT', -verbose => 1 });
+}
 
 sub login {
     my($m) = @_;
@@ -327,6 +337,32 @@ sub download {
     }
 }
 
+sub open_url {
+    my($m) = @_;
+
+    my($opt, $matches, $extra) = _get_options($m, 1);
+    my @ids;
+
+    for my $i (@$matches) {
+        my $d = _get_dl_item($i);
+        if (!$d && $i =~ /\D/) {
+            push @ids, $i;
+        }
+        elsif ($d) {
+            push @ids, $d->id;
+        }
+    }
+
+    for (@ids) {
+        _open($_);
+    }
+}
+
+sub _open {
+    my($id) = @_;
+    system('open', $sen->prod_url . $id);
+}
+
 sub assign_downloaded {
     my($m) = @_;
     _set_downloaded($m, 1);
@@ -432,7 +468,7 @@ sub _set_downloaded {
     for my $i (@$matches) {
         my $d = _get_item($i);
         return unless $d;
-        $dl->update({ ZHASEXPERIENCED => $bool }, $d->id);
+        $dl->update($d->id, { ZHASEXPERIENCED => $bool });
     }
 }
 
@@ -461,10 +497,13 @@ sub _md {
 sub _get_item {
     my($id) = @_;
 
+    return unless defined $id;
+
     my $i = _get_dl_item($id);
+    return unless $i;
+
     my $d = $sen->get_product_data($i->id);
     $d    = $sen->get_product_data($i->productId) unless $d;
-
     $d;
 }
 
@@ -492,7 +531,7 @@ sub _print_info {
         push @args, $d->id;
     }
 
-    my $dl = is_downloaded($i);
+    my $dl = is_downloaded($i || $d->id);
     if ($dl) {
         $strf =~ s/\n/ \N{U+2713}\n/;
     }
