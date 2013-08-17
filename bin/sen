@@ -564,7 +564,7 @@ sub _load_history {
     if (open $fh, '<', "$ENV{HOME}/.sen/histfile") {
         while (<$fh>) {
             chomp;
-            $term->AddHistory($_);
+            $term->AddHistory($_) unless /^q/;
         }
         close $fh;
     }
