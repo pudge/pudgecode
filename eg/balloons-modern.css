@@ -51,23 +51,26 @@ chatitem:nth-of-type(1) {
 
 header {
 	display:block;
-	text-align:center;
+	text-align:left;
 	-webkit-user-select: none;
 	cursor: default;
+	padding:2px 10px 2px 13px;
 }
 headermessage {
     font-family: HelveticaNeue-Medium;
     font-size:11px;
     color:rgb(142,142,147);
     font-weight:normal;
+    font-style:italic;
 }
 
 timestamp {
 	display:block;
-	text-align:center;
+	text-align:left;
 	white-space:nowrap;
 	-webkit-user-select: none;
 	cursor: default;
+	padding:2px 10px 2px 10px;
 }
 
 /* receipts and receipt animations */
@@ -84,14 +87,14 @@ receipt {
     position:absolute;
     top:2px;
     font-family: HelveticaNeue-Medium;
-    font-size:11px;
+    font-size:9px;
+    font-style:italic;
     color:rgb(142,142,147);
     overflow:hidden;
     display:-webkit-box;
     -webkit-box-orient:vertical;
     -webkit-box-sizing:border-box;
-    left:0px;
-    padding-left:12px;
+    left:-1px;
 }
 
 div.receipt-keep-item {
@@ -222,8 +225,8 @@ date {
 }
 
 receipt date {
-    margin-right: -1px;
-    font-size:11px !important;
+    font-size:9px !important;
+    font-style:italic;
 }
 
 rollover-date {
@@ -632,11 +635,10 @@ img.location-chevron {
     box-sizing:border-box;
     display: block;
     width: 300;
-    text-align:center;
+    text-align:left;
     font-family:Helvetica Neue;
     font-size: 10pt;
-    padding-top:10px;
-    padding-bottom:10px;
+    padding:5px 10px 4px 10px;
     -webkit-user-select: none;
 }
 
@@ -649,7 +651,7 @@ img.location-chevron {
 /* Emotes */
 [emote="yes"] messagetext {
     display: block;
-    text-align: center;
+    text-align: left;
     -webkit-border-image: none 100% 1 0 stretch !important;
     padding: 10px 0px 10px 0px;
     max-width: 100%;
