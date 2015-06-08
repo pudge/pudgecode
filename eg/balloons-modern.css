@@ -92,6 +92,7 @@ receipt {
     color:rgb(142,142,147);
     overflow:hidden;
     display:-webkit-box;
+    z-index:-1;
     -webkit-box-orient:vertical;
     -webkit-box-sizing:border-box;
     left:-1px;
