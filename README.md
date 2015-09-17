@@ -1,4 +1,4 @@
 pudgecode
 =========
 
-Various code things
+Various code things I wrote.

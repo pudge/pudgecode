@@ -94,11 +94,34 @@ sub login {
 
 sub _load_download_list {
     my($self, $data) = @_;
-    my $json = $self->_file_input('downloads.json');
+#    my $json = $self->_file_input('downloads.json');
+my $json = $self->_file_input('internal_entitlements.json');
     return unless $json;
     $data ||= decode_json( $json );
+
+my @list;
+for (reverse @{$data->{entitlements}}) {
+    if ($_->{drm_def}) {
+        push @list, $_->{drm_def};
+    }
+    elsif ($_->{game_meta}) {
+        #     sen id productId entitlementId availableDate contentName name firstPlayExpiration
+        my $x = {
+            entitlementId       => $_->{id},
+            productId           => $_->{product_id},
+            availableDate       => $_->{active_date},
+            contentName         => $_->{game_meta}{name},
+            name                => $_->{game_meta}{name},
+        };
+        # entitlement_type 2=vita/PS3, 5=PS4
+        next if $_->{feature_type} == 1; # 0=add-on, 1=demo/app, 3=game
+        push @list, $x;
+    }
+}
+
     $self->download_list(
-        Pudge::SonyEntertainmentNetwork::DownloadList->new( $data->{data}{drmDefList}, { sen => $self } )
+#        Pudge::SonyEntertainmentNetwork::DownloadList->new( $data->{data}{drmDefList}, { sen => $self } )
+Pudge::SonyEntertainmentNetwork::DownloadList->new( \@list, { sen => $self } )
     ) if $data;
 }
 
@@ -106,8 +129,11 @@ sub fetch_download_list {
     my($self) = @_;
 
     say "  getting download list" if $self->debug;
+# https://store.sonyentertainmentnetwork.com/kamaji/api/chihiro/00_09_000/gateway/store/v1/users/me/internal_entitlements?start=0&size=4048&fields=game_meta%2Cdrm_def
     # why 4048?  seems to be the max ... also "entitlements"
-    $self->mech->get($self->session_url . 'user/downloadlist?size=4048&start=0');
+#    $self->mech->get($self->session_url . 'user/downloadlist?size=4048&start=0');
+$self->mech->get($self->session_url . 'gateway/store/v1/users/me/internal_entitlements?start=0&size=4048&fields=game_meta%2Cdrm_def');
+$self->debug(10);
     $self->_mech_debug;
 
     my $content = $self->mech->success && $self->mech->content;
@@ -116,7 +142,8 @@ sub fetch_download_list {
         my $json = decode_json($content);
         my $ok = $self->_json_success($json);
         if ($ok) {
-            $self->_file_output('downloads.json', $content);
+#            $self->_file_output('downloads.json', $content);
+$self->_file_output('internal_entitlements.json', $content);
             return $self->_load_download_list($json);
         }
     }

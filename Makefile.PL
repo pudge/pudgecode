@@ -8,7 +8,7 @@ WriteMakefile(
     'NAME'          => 'Pudge',
     'VERSION_FROM'  => 'lib/Pudge.pm',
     'EXE_FILES'     => [map { "bin/$_" } qw(
-        sen
+        sen comics
     )],
     'PREREQ_PM'     => {
         'Class::Accessor'   => 0,

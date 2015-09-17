@@ -129,12 +129,23 @@ my %DESC_DEFAULTS = (
 my %MAP = (
     title       => 'ZTITLE',
     serial_no   => 'ZSERIALNUMBER',
+    serial_num  => 'ZSERIALNUMBER',
     url         => 'ZASSOCIATEDURL',
     audience    => 'ZAUDIENCERECOMMENDEDAGESINGULARSTRING',
     min_players => 'ZMINIMUMPLAYERS',
     max_players => 'ZMAXIMUMPLAYERS',
     desc        => 'ZUSERSYNOPSIS',
+    desc_source => 'ZSOURCE',
     owner       => 'ZOWNERSINGULARSTRING',
+    series      => 'ZSERIESSINGULARSTRING',
+    series_num  => 'ZNUMBERINSERIES',
+    pages       => 'ZPAGES',
+    experienced => 'ZHASEXPERIENCED',
+    height      => 'ZBOXHEIGHTININCHES',
+    width       => 'ZBOXWIDTHININCHES',
+    length      => 'ZBOXLENGTHININCHES',
+    price       => 'ZPRICE',
+    isbn        => 'ZISBN',
     edition     => [\&_list, 'ZEDITIONSCOMPOSITESTRING'],
     features    => [\&_list, 'ZFEATURESCOMPOSITESTRING'],
     creators    => [\&_list, 'ZCREATORSCOMPOSITESTRING'],
@@ -153,6 +164,17 @@ my %CAT_DEFAULTS = (
         'ZLANGUAGESCOMPOSITESTRING' => 'English',
         'ZROOTSHELF' => '12',
         'ZTYPE' => 'VideoGame',
+        'Z_ENT' => '3',
+        'Z_OPT' => '19',
+    },
+    Book  => {
+        'Z25_ROOTSHELF' => '27',
+        'ZCOUNTRYCODE' => 'us',
+        'ZCREATIONREASON' => '6',
+        'ZFORMATSINGULARSTRING' => 'Digital',
+        'ZLANGUAGESCOMPOSITESTRING' => 'English',
+        'ZROOTSHELF' => '12',
+        'ZTYPE' => 'Book',
         'Z_ENT' => '3',
         'Z_OPT' => '19',
     }
@@ -220,9 +242,15 @@ sub _update {
 
     $data->{ZLASTMODIFICATIONDATE}  //= _now();
 
+    my %desc = (
+        desc                => $desc,
+        ZSOURCE             => delete($data->{ZSOURCE}) // $DESC_DEFAULTS{ZSOURCE},
+        Z2_CONCEPTUALMEDIUM => delete($data->{Z2_CONCEPTUALMEDIUM}) // $DESC_DEFAULTS{Z2_CONCEPTUALMEDIUM},
+    );
+
     $self->_do_update(ZABSTRACTMEDIUM => $data, $id) if $data;
     $self->_insert_image($id, $img) if $img;
-    $self->_insert_desc($id, $desc) if $desc;
+    $self->_insert_desc($id, \%desc) if $desc;
 
     $id;
 }
@@ -258,9 +286,15 @@ sub create {
     $data->{ZCREATIONDATE}          //= _now();
     $data->{ZLASTMODIFICATIONDATE}  //= _now();
 
+    my %desc = (
+        desc                => $desc,
+        ZSOURCE             => delete($data->{ZSOURCE}) // $DESC_DEFAULTS{ZSOURCE},
+        Z2_CONCEPTUALMEDIUM => delete($data->{Z2_CONCEPTUALMEDIUM}) // $DESC_DEFAULTS{Z2_CONCEPTUALMEDIUM},
+    );
+
     $id = $self->_do_insert(ZABSTRACTMEDIUM => $data);
     $self->_insert_image($id, $img);
-    $self->_insert_desc($id, $desc);
+    $self->_insert_desc($id, \%desc);
 
     return $id;
 }
@@ -286,17 +320,21 @@ sub _get_existing_record_id {
 sub _insert_desc {
     my($self, $id, $desc) = @_;
 
-    if ($desc) {
+    if ($desc->{desc}) {
+        $self->dbh->do('delete from ZABSTRACTSYNOPSIS where ZCONCEPTUALMEDIUM = ? and Z2_CONCEPTUALMEDIUM = ? and ZSOURCE = ?',
+            {}, $id, $desc->{Z2_CONCEPTUALMEDIUM}, $desc->{ZSOURCE}
+        );
         $self->dbh->do('delete from ZABSTRACTSYNOPSIS where ZCONCEPTUALMEDIUM = ? and Z2_CONCEPTUALMEDIUM = ? and ZSOURCE = ?',
             {}, $id, $DESC_DEFAULTS{Z2_CONCEPTUALMEDIUM}, $DESC_DEFAULTS{ZSOURCE}
         );
 
         my %desc_data = %DESC_DEFAULTS;
         $desc_data{ZCONCEPTUALMEDIUM}       = $id;
-        $desc_data{ZHTMLSTRING}             = $desc;
+        $desc_data{ZSOURCE}                 = $desc->{ZSOURCE};
+        $desc_data{ZHTMLSTRING}             = $desc->{desc};
         $desc_data{ZUUIDSTRING}             = uc(create_uuid_as_string(UUID_V1));
         $desc_data{ZLASTMODIFICATIONDATE}   = _now();
-        my $did = $self->_do_insert(ZABSTRACTSYNOPSIS => \%desc_data);
+        $self->_do_insert(ZABSTRACTSYNOPSIS => \%desc_data);
     }
 }
 
@@ -318,9 +356,10 @@ sub _insert_image {
             ZCOVERIMAGEDATAHOLDER               => $iid,
             ZCOVERIMAGELARGESTHEIGHTINPIXELS    => $img->{img_h},
             ZCOVERIMAGELARGESTWIDTHINPIXELS     => $img->{img_w},
-            ZCOVERIMAGEISCUSTOM                 => 1,
-            ZCOVERIMAGETINYIMAGEDATA            => $img->{img_s}
+            ZCOVERIMAGEISCUSTOM                 => 1
         );
+        $update{ZCOVERIMAGETINYIMAGEDATA} = $img->{img_s} if $img->{img_s};
+
         $self->_do_update(ZABSTRACTMEDIUM => \%update, $id);
     }
 }

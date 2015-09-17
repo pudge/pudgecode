@@ -1,0 +1,23 @@
+{
+    "entitlements" : [
+        {
+            "drm_def" : {
+                "availableDate" : "2001-01-01T00:00:00Z",
+                "contentName" : "Pudge's Big Adventure",
+                "productId" : "UP0001-NPUB00000_00-PUDGEBIGADVNTR",
+                "entitlementId" : "UP0001-NPUB00000_00-PUDGEBIGADVNTR"
+            }
+        },
+        {
+            "drm_def" : {
+                "availableDate" : "2001-01-01T00:00:00Z",
+                "contentName" : "Boston Bruins Workout",
+                "productId" : "UP0001-NPUB00000_00-PUDGEBIGADVNTR",
+                "entitlementId" : "UP0001-NPUB00000_01-BOSTONBRUINSWO"
+            }
+        }
+    ],
+    "revision_id" : 1347143661633,
+    "start" : 0,
+    "total_results" : 2
+}
