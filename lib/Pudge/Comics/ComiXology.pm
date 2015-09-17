@@ -4,9 +4,11 @@ use warnings;
 use strict;
 use feature ':5.10';
 
+use URI::Escape 'uri_escape';
 use HTML::TreeBuilder;
 use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use Date::Parse 'str2time';
+use JSON::XS qw(decode_json);
 
 use base 'Pudge::Comics';
 use base 'Class::Accessor';
@@ -30,194 +32,194 @@ sub new {
     $self;
 }
 
+sub _add_headers {
+    my($self) = @_;
+    my $mech = $self->{mech};
+    $mech->add_header('x-api-version' => '3.9');
+    $mech->add_header('x-client-application' => 'com.comixology.webstore');
+    $mech->add_header('x-currency' => 'USD_US');
+    $mech->add_header('x-region' => 'US');
+
+    my($username, $token) = $self->get_token;
+    if ($username && $token) {
+        $mech->add_header('x-username' => $username);
+        $mech->add_header('x-user-token' => $token);
+    }
+}
+
 sub fetch_and_store_series {
     my($self) = @_;
 
     my $url = $self->base_url;
+    $self->_add_headers;
 
-    for my $type (qw(Comics Archive)) { # Comics Archive
-        my $type_path_list = $type eq 'Comics' ? 'series' : lcfirst($type);
-        my $type_path_book = $type eq 'Comics' ? 'books' : $type_path_list;
+    my $offset = 0;
+    my $limit  = 120;
+    my @books;
 
-        if ($type eq 'Archive' && $Pudge::Comics::KEEP_IDS) {
-            for my $id (@Pudge::Comics::KEEP_IDS) {
-                print                          "${url}my-${type_path_book}/sid/$id","\n"
-                    if $self->debug > 1;
-                $self->getcx_series('Archive', "${url}my-${type_path_book}/sid/$id");
-            }
-            next;
+    while (1) {
+        my $order           = '[{"field":"seriesInfo.title","direction":"ASC"},{"field":"seriesInfo.position","direction":"ASC"}]';
+        my $library_filter  = '[{"field":"archived","operator":"=","value":"0"}]';
+        my $library_url     = 'https://api.comixology.com/user/books' .
+            '?filter=' . uri_escape($library_filter) .
+            '&order=' . uri_escape($order) .
+            "&limit=$limit&offset=$offset";
+
+        print $library_url, "\n" if $self->debug;
+        $self->mech_get($library_url);
+        my $library = decode_json($self->content);
+# print Dumper $library;
+        my %book_ids = map { $_->{bookId} => $_ } @{ $library->{objects} };
+        last if !keys %book_ids;
+
+        my $books_filter    = sprintf '[{"field":"id","operator":"IN","values":[%s]}]', join(',', keys %book_ids);
+        my $books_url = 'https://api.comixology.com/books' .
+            '?filter=' . uri_escape($books_filter) .
+            '&order=' . uri_escape($order);
+
+        print $books_url, "\n" if $self->debug;
+        $self->mech_get($books_url);
+        my $books = decode_json($self->content);
+# print Dumper $books;
+        push @books, map { $_->{userBook} = $book_ids{$_->{id}}; $_ } @{$books->{objects}};
+        $offset += $limit;
+
+# last;
+    }
+
+# print JSON::XS::encode_json(\@books);
+# exit;
+
+    my @BOOKS;
+    for my $book_data (@books) {
+        my $book = $self->get_book($book_data);
+        next unless $book;
+
+        my $old_serial_num = delete $book->{old_serial_num};
+        $self->save_book($book, $old_serial_num);
+    }
+
+}
+
+
+sub get_book {
+    my($self, $book_data) = @_;
+
+    die Dumper($book_data) unless $book_data->{image}{url} && $book_data->{image}{optionsFormat} &&
+        defined $book_data->{image}{optionsFormat}{start} &&
+        defined $book_data->{image}{optionsFormat}{end} &&
+        defined $book_data->{image}{optionsFormat}{width} &&
+        $book_data->{title} &&
+        $book_data->{seriesInfo}{title} &&
+        $book_data->{publisherInfo}{title} &&
+        ref($book_data->{creators}) && @{$book_data->{creators}} &&
+        ref($book_data->{price}) && $book_data->{price}{fullFormatted} &&
+        $book_data->{pageCount} &&
+        defined($book_data->{status}{ageRating}) && length($book_data->{status}{ageRating}) &&
+        $book_data->{description} &&
+        defined($book_data->{userBook}{progress}) &&
+    1;
+
+    my $book = {};
+    $book->{serial_num}     = 'comixology-' . $book_data->{id};
+    $book->{url}            = $self->cx_url($book_data);
+    $book->{old_serial_num} = $book->{url};
+    $book->{title}          = $self->cx_title($book_data);
+    $book->{subtitle}       = $book_data->{issueTitle} if $book_data->{issueTitle};
+    $book->{asin}           = $book_data->{asin} if $book_data->{asin};
+    $book->{series}         = $book_data->{seriesInfo}{title};
+    $book->{series_num}     = $book_data->{issueNumber} if $book_data->{issueNumber};
+    $book->{pages}          = $book_data->{pageCount};
+    $book->{purchased}      = str2time($book_data->{userBook}{purchaseDate});
+
+    $book->{desc}           = $self->format_desc($book_data->{description});
+    $book->{desc_source}    = 'comiXology';
+
+    $book->{creators}       = [ map { $_->{name} } @{$book_data->{creators}} ];
+    $book->{publisher}      = $book_data->{publisherInfo}{title};
+    $book->{experienced}    = $book_data->{userBook}{progress} == 100;
+
+    $book->{edition}        = [ $book_data->{sellerOfRecord} || 'comiXology' ];
+    if ($book->{edition}[0] ne 'comiXology') {
+        push @{$book->{edition}}, 'comiXology';
+    }
+
+    $book->{audience}       = $book_data->{status}{ageRating};
+    if ($book->{audience} eq '0') {
+        $book->{audience} = 'All Ages';
+    }
+    elsif ($book->{audience} =~ /\d/) {
+        $book->{audience} .= '+ Only';
+    }
+
+    $book->{price}          = $book_data->{price}{fullFormatted};
+    if ($book->{price} eq 'price.free') {
+        $book->{price} = '$0';
+    }
+
+    if ($self->dl->fetch($book->{serial_num})) {
+        return;
+    }
+
+    print "# $book->{title}\n";
+
+    $self->cx_other_data($book);
+
+# use Data::Dumper; $Data::Dumper::Sortkeys=1;
+# print Dumper $book;
+# return $book;
+
+    my $img_url = sprintf $book_data->{image}{url}, (
+        $book_data->{image}{optionsFormat}{start} .
+        sprintf($book_data->{image}{optionsFormat}{width}, 640) .
+        $book_data->{image}{optionsFormat}{end}
+    );
+    my $img_url_s = sprintf $book_data->{image}{url}, (
+        $book_data->{image}{optionsFormat}{start} .
+        sprintf($book_data->{image}{optionsFormat}{width}, 128) .
+        $book_data->{image}{optionsFormat}{end}
+    );
+
+    my $img = Pudge::Comics::_img($img_url, $img_url_s);
+    @{$book}{keys %$img} = values %$img;
+
+    return $book;
+}
+
+sub cx_other_data {
+    my($self, $book, $tried) = @_;
+    $tried ||= 0;
+
+    eval {
+        $self->mech_get($book->{url});
+        my $tree = HTML::TreeBuilder->new_from_content($self->content);
+
+        if ($tree->find_by_attribute(class => 'errorPage')) {
+            $book->{url} = 'https://www.comixology.com/my-books/library/';
+            $book->{genres} = ['Unavailable'];
         }
-
-        my $letters = $self->{letters} // ['A' .. 'Z', '%23'];  # %23 = '#'
-        for my $letter (@$letters) {
-            my %seen;
-            PAGES: for my $I (1..99) {
-                print           "${url}my-${type_path_list}?my${type}List_alpha=${letter}&my${type}List_pg=$I","\n"
-                    if $self->debug;
-                $self->mech_get("${url}my-${type_path_list}?my${type}List_alpha=${letter}&my${type}List_pg=$I");
-
-                my %links = map { $_->url => $_ } $self->mech->find_all_links(url_regex => qr|^${url}my-${type_path_book}/sid/\d+$|);
-                last unless keys %links;
-                for my $series_link (sort keys %links) {
-                    last PAGES if $seen{$series_link}++;
-                    $self->getcx_series($type, $series_link);
-                }
-            }
+        else {
+            $self->findcx_genres($tree, $book);
+            $self->findcx_published($tree, $book);
+        }
+    };
+    my $err = $@;
+    if ($err) {
+        if ($tried >= 1) {
+            print "Failed: $err\n";
+        }
+        else {
+            warn "Retrying: $err\n";
+            $self->cx_other_data($book, $tried+1);
         }
     }
-}
-
-
-sub getcx_series {
-    my($self, $type, $series_link) = @_;
-    print $series_link, "\n" if $self->debug > 2;
-
-    return if $Pudge::Comics::KEEP_IDS && $type eq 'Archive' && $series_link !~ m|/sid/$Pudge::Comics::KEEP_IDS$|;
-
-    print $series_link, "\n" if $self->debug == 2;
-
-    my(%seen2, %seen2_redo);
-    PAGES2: for my $J (1..99) {
-        $self->mech_get($series_link . "?SeriesComics_pg=$J");
-        my $content = $self->content;
-        return if $content =~ /Recently Purchased/;
-
-        my $tree = HTML::TreeBuilder->new_from_content($content);
-        my @items = $tree->find_by_attribute(class => 'item-container');
-        for my $item (@items) {
-            my $book = {};
-
-            print Dumper $item if $self->debug > 4;
-
-            # URL
-            my $item_link = $self->find_link($item, $book);
-            next if $Pudge::Comics::SKIP_IDS && $type eq 'Archive' && $item_link =~ m|/digital-comic/$Pudge::Comics::SKIP_IDS$|;
-            last PAGES2 if $seen2{$item_link}++;
-
-            my $return = eval {
-                # TITLE
-                $self->find_title($item, $book);
-
-                print "$book->{title}: $item_link\n" if $self->debug > 1;
-
-                return if $Pudge::Comics::SKIP_STRINGS && $type eq 'Archive' && $book->{title} =~ /\b$Pudge::Comics::SKIP_STRINGS\b/;
-                return if $self->dl->fetch($item_link);
-
-                print "$book->{title}: $item_link\n" if $self->debug <= 1;
-
-                $book->{experienced} = 1 if $type eq 'Comics';
-
-                # SERIES
-                $self->find_series($item, $book);
-
-                $self->mech_get($item_link);
-                my $content = $self->content;
-                return if ($content =~ m|src="/assets/imgs/badges/(?:FR).png"|);
-                my $tree = HTML::TreeBuilder->new_from_content($content);
-
-                if ($tree->find_by_attribute(class => 'errorPage')) {
-                    $book->{url} = $series_link;
-                    # CREATORS
-                    $self->find_creators($item, $book);
-                    # DESC
-                    $self->find_desc($item, $book);
-                    # IMG
-                    $self->find_img($item, $book);
-                    # GENRES
-                    $book->{genres} = ['Unavailable'];
-                }
-                else {
-                    $book->{url} = $item_link;
-                    # DESC
-                    $self->find_desc($tree, $book);
-                    # IMG
-                    $self->find_img($tree, $book, 'cover');
-                    # PUBLISHER
-                    $self->findcx_publisher($tree, $book);
-                    # CREATORS
-                    $self->findcx_creators($tree, $book);
-                    # GENRES
-                    $self->findcx_genres($tree, $book);
-                    # MISC
-                    $self->findcx_misc($tree, $book);
-                    # PRICE
-                    $self->findcx_price($tree, $book);
-                }
-
-                $book->{edition} = [ 'comiXology' ];
-                $self->save_book($book, $item_link);
-                return 1;
-            };
-            my $err = $@;
-            next if $return;
-            if ($err) {
-                warn "Retrying: $err\n";
-                if (!$seen2_redo{$item_link}++) { # retry only once
-                    delete $seen2{$item_link};
-                    redo;
-                }
-            }
-        }
-    }
-}
-
-
-sub get_item {
-    my($self, $item_link, $tree, $book) = @_;
-
-    # URL
-    $book->{url} = $item_link;
-    # TITLE
-    $self->findcx_title($tree, $book);
-    print "$book->{title}: $item_link\n";
-
-    # SERIES
-    $self->find_series($tree, $book);
-    # DESC
-    $self->find_desc($tree, $book);
-    # IMG
-    $self->find_img($tree, $book, 'cover');
-    # PUBLISHER
-    $self->findcx_publisher($tree, $book);
-    # CREATORS
-    $self->findcx_creators($tree, $book);
-    # GENRES
-    $self->findcx_genres($tree, $book);
-    # MISC
-    $self->findcx_misc($tree, $book);
-    # PRICE
-    $self->findcx_price($tree, $book);
-
-    $book->{edition} ||= [];
-    push @{$book->{edition}}, 'comiXology';
-}
-
-
-
-
-sub findcx_title {
-    my($self, $item, $book) = @_;
-    my(@foo) = $item->find_by_attribute(class => 'hinline');
-    $book->{title} = $self->item_content($foo[-1]);
-}
-
-sub findcx_creators {
-    my($self, $item, $book) = @_;
-
-    my @names;
-    my $credits = $item->find_by_attribute(class => 'credits');
-    for my $foo ($credits->find_by_tag_name('a')) {
-        if ($foo->attr('href') =~ /creator/) {
-            push @names, $self->item_content($foo);
-        }
-    }
-    $book->{creators} =  \@names;
 }
 
 sub findcx_genres {
     my($self, $item, $book) = @_;
 
     my @genres;
+    print STDERR $book->{url}, "\n";
     my $credits = $item->find_by_attribute(class => 'credits');
     for my $foo ($credits->find_by_tag_name('a')) {
         if ($foo->attr('href') =~ /genre/) {
@@ -227,36 +229,8 @@ sub findcx_genres {
     $book->{genres} =  \@genres;
 }
 
-sub findcx_publisher {
+sub findcx_published {
     my($self, $item, $book) = @_;
-   
-    $book->{publisher} =  $self->item_content(
-        $item->find_by_attribute(class => 'publisher')
-             ->find_by_attribute(class => 'textLink')
-             ->find_by_attribute(class => 'name')
-    );
-}
-
-sub findcx_price {
-    my($self, $item, $book) = @_;
-
-    $book->{price} = $self->item_content(
-        $item->find_by_attribute(class => 'item-full-price')
-            ||
-        $item->find_by_attribute(class => 'item-price')
-#             ||
-#         $item->find_by_attribute(class => 'org_price')
-#             ||
-#         $item->find_by_attribute(class => 'price')
-#             ||
-#         $item->find_by_attribute(class => 'price ')
-    );
-    $book->{price} = '$0' if $book->{price} =~ /FREE/;
-}
-
-sub findcx_misc {
-    my($self, $item, $book) = @_;
-    # pages, published, audience
 
     my $last;
     for my $foo ($item->find_by_tag_name('h4', 'div')) {
@@ -267,26 +241,47 @@ sub findcx_misc {
         }
         elsif ($class eq 'aboutText') {
             my $text = $self->item_content($foo);
-            # PAGE COUNT
-            if ($last eq 'Page Count') {
-                $text =~ s/\D+//g;
-                $book->{pages} = $text;
-            }
             # RELEASE DATE
-            elsif ($last eq 'Print Release Date') {
+            if ($last eq 'Print Release Date') {
                 $book->{published} = str2time($text);
             }
             # RELEASE DATE
             elsif ($last eq 'Digital Release Date' && !$book->{published}) {
                 $book->{published} = str2time($text);
             }
-            # RATING
-            elsif ($last eq 'Age Rating') {
-                $book->{audience} = Pudge::Comics::fixstr($text);
-            }
         }
     }
 }
 
 
+
+sub cx_title {
+    my($self, $book_data) = @_;
+
+    my $title = $book_data->{title};
+    $title         .= ' Vol. ' . $book_data->{volumeNumber} if $book_data->{volumeNumber};
+    $title         .= ' #' . $book_data->{issueNumber} if defined $book_data->{issueNumber};
+    $title         .= ': ' . $book_data->{volumeTitle} if $book_data->{volumeTitle};
+
+    return $title;
+}
+
+sub cx_url {
+    my($self, $book_data) = @_;
+
+    my $book_url_title = $book_data->{title};
+    $book_url_title        .= ' Vol. ' . $book_data->{volumeNumber} if $book_data->{volumeNumber};
+    $book_url_title        .= ' ' . $book_data->{issueNumber} if defined $book_data->{issueNumber};
+    $book_url_title        .= ' of ' . $book_data->{issueCount} if $book_data->{issueCount};
+    $book_url_title        .= ': ' . $book_data->{volumeTitle} if $book_data->{volumeTitle};
+
+    $book_url_title =~ s/'//g;
+    $book_url_title =~ s/[\W]+/-/g;
+    $book_url_title =~ s/[\s-]+$//g;
+
+    return "https://www.comixology.com/$book_url_title/digital-comic/$book_data->{id}";
+}
+
 "Free as in comics";
+
+__END__

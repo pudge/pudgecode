@@ -148,8 +148,8 @@ $(document).ready(function() {
         "bDeferRender": true,
         "oColumnFilterWidgets": {
             "aiExclude": [ 0, 1, 2, 6 ],
-            //"sSeparator": "\\s*,\\s*",
-            //"bGroupTerms": true
+            "sSeparator": " *, *",
+            //"bGroupTerms": true,
         },
         "fnDrawCallback": function( oSettings ) {
             $('.show-info').unbind().click(
@@ -171,8 +171,9 @@ $(document).ready(function() {
         window_size();
     });
 
-    $('.column-filter-widget:last select').val('VideoGame').change();
-    $('.column-filter-widget:nth-child(2) select').val('PS3').change();
-    $('.column-filter-widget:first select').val('E').change();
-    $('.column-filter-widget:first select').val('E10+').change();
+//     $('.column-filter-widget:last select').val('VideoGame').change();
+//     $('.column-filter-widget:nth-child(2) select').val('PS3').change();
+//     $('.column-filter-widget:nth-child(2) select').val('PS4').change();
+//     $('.column-filter-widget:first select').val('E').change();
+//     $('.column-filter-widget:first select').val('E10+').change();
 } );

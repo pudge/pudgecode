@@ -33,6 +33,10 @@ my $d = $dl->dbh->selectall_arrayref(
 for my $i (@$d) {
     # none of these are used anymore, not playable or worth mentioning
     next if $i->{ZTYPE} eq 'VideoGame' && $i->{ZPLATFORMSCOMPOSITESTRING} && $i->{ZPLATFORMSCOMPOSITESTRING} =~ /(?:Electronic Game|Mac)/;
+    if ($i->{ZTYPE} eq 'Book' && $i->{ZEDITIONSCOMPOSITESTRING} && $i->{ZEDITIONSCOMPOSITESTRING} =~ /\bComic\b/) {
+        $i->{ZTYPE} = 'Comic';
+    }
+
     # all my physical movies and music are digitized now, and will be input via
     # iTunes / scripts (not the DL3 iTunes import, which doesn't do what I want)
     # (it'd be nice to come up with a way to get my iBooks and Kindle data too)
@@ -148,6 +152,7 @@ sub _audience {
 
 sub _platform {
     my $p = shift || '';
+    $p =~ s/\x{2122}//g;
     $p =~ /playstation\s*4/i ? 'PS3' :
     $p =~ /playstation\s*3/i ? 'PS3' :
     $p =~ /playstation\s*2/i ? 'PS2' :

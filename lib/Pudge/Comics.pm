@@ -15,7 +15,7 @@ use HTML::TreeBuilder;
 use Pudge::DeliciousLibrary;
 use Date::Parse 'str2time';
 use Image::Size;
-use LWP::Simple ();
+use LWP::Simple qw($ua);
 
 use base 'Class::Accessor';
 __PACKAGE__->mk_accessors(qw(
@@ -32,6 +32,9 @@ our($SKIP_STRINGS, $KEEP_IDS, @KEEP_IDS, $SKIP_IDS);
 
 sub new {
     my($class, $opts) = @_;
+
+    $ua->agent('Safari');
+
     $opts ||= {};
     $opts->{agent_alias}    //= 'Mac Safari';
     $opts->{local_path}     //= "$ENV{HOME}/.comics";
@@ -88,7 +91,7 @@ sub fetch_and_store_extras {
         my $err = $@;
         next if $return;
         if ($err) {
-            warn "Retrying: $err\n";
+            warn "Retrying $item_link: $err\n";
             if (!$seen{$item_link}++) { # retry only once
                 redo;
             }
@@ -101,7 +104,7 @@ sub _init_mech {
     my($self) = @_;
     my $mech = WWW::Mechanize->new(cookie_jar => $self->_get_cookie);
     $mech->agent_alias($self->agent_alias);
-    $self->{mech} = $mech;
+    return $self->{mech} = $mech;
 }
 
 sub mech_get {
@@ -134,6 +137,16 @@ sub _get_cookie {
     }
 
     $cookie_jar;
+}
+
+sub get_token {
+    my($self) = @_;
+    if (open my $fh, '<', $self->local_path . "/cookies/comixology-token") {
+        my($username, $token) = map { chomp; $_ } <$fh>;
+        return($username, $token);
+    }
+
+    ();
 }
 
 sub _load_extras {
@@ -211,17 +224,12 @@ sub item_content {
 }
 
 sub _img {
-    my($url) = @_;
+    my($url, $url_s) = @_;
     my %img;
 
-    # comiXology
-    if ($url =~ s/&width=\d+//) {
-        $img{img_s} = LWP::Simple::get($url . '&width=128');
-        $img{img} = LWP::Simple::get($url);
-    }
     # Dark Horse
-    elsif ($url =~ s|(covers)/\d00/|$1/100/|) {
-        $img{img_s} = LWP::Simple::get($url);
+    if ($url =~ s|(covers)/\d00/|$1/100/|) {
+        $img{img_s} = LWP::Simple::get($url_s || $url);
 
         $url =~ s|(covers)/\d00/|$1/600/|;
         $img{img} = LWP::Simple::get($url);
@@ -231,6 +239,13 @@ sub _img {
             $img{img} = LWP::Simple::get($url);
         }
     }
+    else {
+        $img{img_s} = LWP::Simple::get($url_s || $url);
+        $img{img} = LWP::Simple::get($url);
+    }
+
+
+    die "No img for $url" unless $img{img};
 
     my($w, $h, $t) = imgsize(\ $img{img});
     $img{img_h} = $h;
@@ -258,11 +273,11 @@ sub fixstr {
 }
 
 sub save_book {
-    my($self, $book, $item_link) = @_;
+    my($self, $book, $old_serial_num) = @_;
 
-    $book->{creators}     = [ keys %{{ map { $_ => 1 } @{$book->{creators}} }} ];
+    $book->{creators}     = [ keys %{{ map { $_ => 1 } @{$book->{creators}} }} ]; # dedup
     $book->{publishers}   = [delete $book->{publisher}] if defined $book->{publisher};
-    $book->{serial_num}   = $item_link;
+    $book->{serial_num}   ||= $book->{url};
     $book->{published}    ||= str2time('January 1, 1970');
     $book->{edition}      ||= [];
     unshift @{$book->{edition}}, 'Comic';
@@ -270,8 +285,8 @@ sub save_book {
     if ($self->debug > 3) {
         print Dumper { map { $_ => $book->{$_} } grep !/img/, keys %$book };
     }
-    $self->dl->create(Book => $book);
-    #exit;
+    $self->dl->create(Book => $book, $old_serial_num);
+# exit;
 }
 
 
@@ -312,9 +327,13 @@ sub find_desc {
     $src   ||= 'comiXology';
     my($foo) = $item->find_by_attribute(class => $class);
 
-#     $book->{desc} = '<div>' . join("<br><br>", map { fixstr($_) } grep { !ref } @{$foo->content_array_ref}) . '<br>-30-</div>';
-    $book->{desc} = '<div>' . fixstr($foo->as_text) . '<br>-30-</div>';
+    $book->{desc} = $self->format_desc($foo->as_text);
     $book->{desc_source} = $src;
+}
+
+sub format_desc {
+    my($self, $desc) = @_;
+    return '<div>' . fixstr($desc) . '<br>-30-</div>';
 }
 
 sub find_img {

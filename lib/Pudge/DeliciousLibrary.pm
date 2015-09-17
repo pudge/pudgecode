@@ -128,6 +128,8 @@ my %DESC_DEFAULTS = (
 );
 my %MAP = (
     title       => 'ZTITLE',
+    subtitle    => 'ZSUBTITLE',
+    asin        => 'ZASIN',
     serial_no   => 'ZSERIALNUMBER',
     serial_num  => 'ZSERIALNUMBER',
     url         => 'ZASSOCIATEDURL',
@@ -263,11 +265,11 @@ sub update {
 }
 
 sub create {
-    my($self, $type, $attrs) = @_;
+    my($self, $type, $attrs, $old_serial_num) = @_;
 
     my($data, $typeh, $img, $desc) = $self->_prep_attrs($type, $attrs);
 
-    my $id = $self->_get_existing_record_id($data);
+    my $id = $self->_get_existing_record_id($data, $old_serial_num);
     if ($id) {
         return $self->_update($id, $data, $img, $desc);
     }
@@ -300,20 +302,25 @@ sub create {
 }
 
 sub _get_existing_record {
-    my($self, $data) = @_;
+    my($self, $data, $old_serial_num) = @_;
 
-    my $serial = ref $data ? $data->{ZSERIALNUMBER} : $data;
+    my $serial = $old_serial_num || (ref $data ? $data->{ZSERIALNUMBER} : $data);
     return if ( !$serial );
 
     my $found = $self->dbh->selectrow_hashref('select * from ZABSTRACTMEDIUM where ZSERIALNUMBER = ?', {}, $serial);
-    return if ( !$found || !$found->{Z_PK} );
+    if ( !$found || !$found->{Z_PK} ) {
+        if ($old_serial_num) { # try without old serial num
+            return $self->_get_existing_record($data);
+        }
+        return;
+    }
 
     $found;
 }
 
 sub _get_existing_record_id {
-    my($self, $data) = @_;
-    my $found = $self->_get_existing_record($data);
+    my($self, $data, $old_serial_num) = @_;
+    my $found = $self->_get_existing_record($data, $old_serial_num);
     $found->{Z_PK};
 }
 
