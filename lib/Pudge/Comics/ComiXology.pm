@@ -29,7 +29,26 @@ sub new {
         %$opts
     }, $class;
 
+    $self->_add_headers;
+
     $self;
+}
+
+sub get_item {
+    my($self, $id) = @_;
+
+    my $filter  = qq'[{"field":"id","operator":"=","value":"$id"}]';
+    my $books   = $self->_fetch_books(1, 0, undef, $filter);
+
+    my $book_data = $books->{objects}[0];
+    $book_data->{userBook} = {
+        progress        => 0,
+        purchaseDate    => 0
+    };
+
+    my $book = $self->get_book($books->{objects}[0]);
+    delete $book->{old_serial_num};
+    return $book;
 }
 
 sub _add_headers {
@@ -47,50 +66,66 @@ sub _add_headers {
     }
 }
 
+sub _fetch_books {
+    my($self, $limit, $offset, $book_ids, $books_filter) = @_;
+
+    $books_filter     ||= sprintf '[{"field":"id","operator":"IN","values":[%s]}]', join(',', @$book_ids);
+    my $order = $self->_fetch_order_ref;
+    my $books_url       = 'https://api.comixology.com/books' .
+        '?filter=' . uri_escape($books_filter) .
+        '&order=' . uri_escape($order);
+    #print $books_url, "\n" if $self->debug;
+
+    $self->mech_get($books_url);
+    my $books = decode_json($self->content);
+#print Dumper $books;
+    return $books;
+}
+
+sub _fetch_user_books {
+    my($self, $limit, $offset, $library_filter) = @_;
+    $library_filter   ||= '[{"field":"archived","operator":"=","value":"0"}]';
+    my $order = $self->_fetch_order_ref;
+
+    my $library_url     = 'https://api.comixology.com/user/books' .
+        '?filter=' . uri_escape($library_filter) .
+        '&order=' . uri_escape($order) .
+        "&limit=$limit&offset=$offset";
+    #print $library_url, "\n" if $self->debug;
+
+    $self->mech_get($library_url);
+    my $library = decode_json($self->content);
+#print Dumper $library;
+    return $library;
+}
+
+sub _fetch_order_ref {
+    return '[{"field":"seriesInfo.title","direction":"ASC"},{"field":"seriesInfo.position","direction":"ASC"}]'
+}
+
 sub fetch_and_store_series {
     my($self) = @_;
 
     my $url = $self->base_url;
-    $self->_add_headers;
 
     my $offset = 0;
     my $limit  = 120;
     my @books;
 
     while (1) {
-        my $order           = '[{"field":"seriesInfo.title","direction":"ASC"},{"field":"seriesInfo.position","direction":"ASC"}]';
-        my $library_filter  = '[{"field":"archived","operator":"=","value":"0"}]';
-        my $library_url     = 'https://api.comixology.com/user/books' .
-            '?filter=' . uri_escape($library_filter) .
-            '&order=' . uri_escape($order) .
-            "&limit=$limit&offset=$offset";
-
-        print $library_url, "\n" if $self->debug;
-        $self->mech_get($library_url);
-        my $library = decode_json($self->content);
-# print Dumper $library;
+        my $library = $self->_fetch_user_books($limit, $offset);
         my %book_ids = map { $_->{bookId} => $_ } @{ $library->{objects} };
         last if !keys %book_ids;
 
-        my $books_filter    = sprintf '[{"field":"id","operator":"IN","values":[%s]}]', join(',', keys %book_ids);
-        my $books_url = 'https://api.comixology.com/books' .
-            '?filter=' . uri_escape($books_filter) .
-            '&order=' . uri_escape($order);
-
-        print $books_url, "\n" if $self->debug;
-        $self->mech_get($books_url);
-        my $books = decode_json($self->content);
-# print Dumper $books;
+        my $books = $self->_fetch_books($limit, $offset, [keys %book_ids]);
         push @books, map { $_->{userBook} = $book_ids{$_->{id}}; $_ } @{$books->{objects}};
         $offset += $limit;
-
 # last;
     }
 
 # print JSON::XS::encode_json(\@books);
 # exit;
 
-    my @BOOKS;
     for my $book_data (@books) {
         my $book = $self->get_book($book_data);
         next unless $book;
@@ -118,6 +153,7 @@ sub get_book {
         defined($book_data->{status}{ageRating}) && length($book_data->{status}{ageRating}) &&
         $book_data->{description} &&
         defined($book_data->{userBook}{progress}) &&
+        defined($book_data->{userBook}{purchaseDate}) &&
     1;
 
     my $book = {};
@@ -130,7 +166,7 @@ sub get_book {
     $book->{series}         = $book_data->{seriesInfo}{title};
     $book->{series_num}     = $book_data->{issueNumber} if $book_data->{issueNumber};
     $book->{pages}          = $book_data->{pageCount};
-    $book->{purchased}      = str2time($book_data->{userBook}{purchaseDate});
+    $book->{purchased}      = str2time($book_data->{userBook}{purchaseDate}) if $book_data->{userBook}{purchaseDate};
 
     $book->{desc}           = $self->format_desc($book_data->{description});
     $book->{desc_source}    = 'comiXology';

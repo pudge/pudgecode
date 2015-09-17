@@ -72,17 +72,21 @@ sub fetch_and_store_extras {
         my $item_link = $item->{link};
         next if $self->dl->fetch($item_link);
 
-        my $book = { experienced => $item->{experienced} // 0 };
-        $book->{edition} = [ $item->{src} // () ];
+        my $book;
+        if ($item_link =~ /comixology/i) {
+            (my $id = $item_link) =~ s|^.+?/(\d+)$|$1|;
+            next if $self->dl->fetch('comixology-' . $id);
+            $book = $self->comixology->get_item($id);
+        }
 
-        $self->mech_get($item_link);
-        my $tree = HTML::TreeBuilder->new_from_content($self->content);
+        $book->{experienced} //= $item->{experienced} // 0;
+        $book->{edition}     //= [];
+        push @{$book->{edition}}, $item->{src} if defined $item->{src};
 
         my $return = eval {
-            if ($item_link =~ /comixology/) {
-                $self->comixology->get_item($item_link, $tree, $book);
-            }
-            else {
+            if ($item_link !~ /comixology/i) {
+                $self->mech_get($item_link);
+                my $tree = HTML::TreeBuilder->new_from_content($self->content);
                 $self->darkhorse->get_item($item_link, $tree, $book);
             }
 
@@ -287,6 +291,14 @@ sub save_book {
     }
     $self->dl->create(Book => $book, $old_serial_num);
 # exit;
+}
+
+sub dump {
+    my($self, $book) = @_;
+    my $copy = { %$book };
+    $copy->{img_length}     = length delete $copy->{img};
+    $copy->{img_s_length}   = length delete $copy->{img_s};
+    print Dumper $copy;
 }
 
 
