@@ -70,17 +70,29 @@ sub fetch_and_store_extras {
     my %seen;
     for my $item (@$extras) {
         my $item_link = $item->{link};
-        next if $self->dl->fetch($item_link);
 
         my $book;
-        if ($item_link =~ /comixology/i) {
-            (my $id = $item_link) =~ s|^.+?/(\d+)$|$1|;
-            next if $self->dl->fetch('comixology-' . $id);
-            $book = $self->comixology->get_item($id);
+        $book->{experienced} //= $item->{experienced} // 0;
+
+        if ($self->dl->fetch($item_link)) {
+            $self->dl->create(Book => $book, $item_link);
+            next;
         }
 
-        $book->{experienced} //= $item->{experienced} // 0;
-        $book->{edition}     //= [];
+        if ($item_link =~ /comixology/i) {
+            (my $id_num = $item_link) =~ s|^.+?/(\d+)$|$1|;
+            my $id = 'comixology-' . $id_num;
+            if ($self->dl->fetch($id)) {
+                $self->dl->create(Book => $book, $id);
+                next;
+            }
+            my $cx_book = $self->comixology->get_item($id_num);
+            for my $k (keys %$cx_book) {
+                $book->{$k} //= $cx_book->{$k};
+            }
+        }
+
+        $book->{edition} //= [];
         push @{$book->{edition}}, $item->{src} if defined $item->{src};
 
         my $return = eval {
@@ -167,7 +179,7 @@ sub _load_extras {
             chomp;
             my $link = $_;
 
-            my $experienced = 1;
+            my $experienced = 0;
             if ($link =~ /^(\S+)\s+(\d)$/) {
                 $link           = $1;
                 $experienced    = $2;

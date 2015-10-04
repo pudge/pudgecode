@@ -140,7 +140,8 @@ sub fetch_and_store_series {
 sub get_book {
     my($self, $book_data) = @_;
 
-    die Dumper($book_data) unless $book_data->{image}{url} && $book_data->{image}{optionsFormat} &&
+    die "Book has insufficient data: " . Dumper($book_data) unless
+        $book_data->{image}{url} && $book_data->{image}{optionsFormat} &&
         defined $book_data->{image}{optionsFormat}{start} &&
         defined $book_data->{image}{optionsFormat}{end} &&
         defined $book_data->{image}{optionsFormat}{width} &&
@@ -194,7 +195,7 @@ sub get_book {
     }
 
     if ($self->dl->fetch($book->{serial_num})) {
-        return;
+        return $book;
     }
 
     print "# $book->{title}\n";
