@@ -319,6 +319,10 @@ sub cx_url {
     return "https://www.comixology.com/$book_url_title/digital-comic/$book_data->{id}";
 }
 
+sub mech_logged_in {
+    return 1;
+}
+
 "Free as in comics";
 
 __END__

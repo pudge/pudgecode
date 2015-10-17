@@ -123,11 +123,17 @@ sub _init_mech {
     return $self->{mech} = $mech;
 }
 
+sub mech_logged_in {
+    my($self) = @_;
+    return $self->mech->content =~ /loginLink/ ? 0 : 1;
+}
+
 sub mech_get {
     my($self, $link) = @_;
     $self->mech->get($link);
     $self->_mech_debug;
-    if ($self->mech->content =~ /loginLink/) {
+
+    unless ($self->mech_logged_in) {
         croak "Not logged in";
     }
 }
