@@ -3,6 +3,7 @@ package Pudge::Comics::ComiXology;
 use warnings;
 use strict;
 use feature ':5.10';
+use Carp qw(confess);
 
 use URI::Escape 'uri_escape';
 use HTML::TreeBuilder;
@@ -35,7 +36,7 @@ sub new {
 }
 
 sub get_item {
-    my($self, $id) = @_;
+    my($self, $id, $item) = @_;
 
     my $filter  = qq'[{"field":"id","operator":"=","value":"$id"}]';
     my $books   = $self->_fetch_books(1, 0, undef, $filter);
@@ -46,7 +47,11 @@ sub get_item {
         purchaseDate    => 0
     };
 
-    my $book = $self->get_book($books->{objects}[0]);
+    my $book = eval { $self->get_book($books->{objects}[0]) };
+    unless ($book) {
+        print Dumper [$id, $item];
+        die $@;
+    }
     delete $book->{old_serial_num};
     return $book;
 }
@@ -127,10 +132,12 @@ sub fetch_and_store_series {
 # exit;
 
     for my $book_data (@books) {
-        my $book = $self->get_book($book_data);
+        my $book = eval { $self->get_book($book_data) };
+        print $@ if $@;
         next unless $book;
 
         my $old_serial_num = delete $book->{old_serial_num};
+        push @{$book->{edition}}, 'comiXology-original';
         $self->save_book($book, $old_serial_num);
     }
 
@@ -140,7 +147,8 @@ sub fetch_and_store_series {
 sub get_book {
     my($self, $book_data) = @_;
 
-    die "Book has insufficient data: " . Dumper($book_data) unless
+#die Dumper $book_data;
+    confess "Book has insufficient data: " . Dumper($book_data) unless
         $book_data->{image}{url} && $book_data->{image}{optionsFormat} &&
         defined $book_data->{image}{optionsFormat}{start} &&
         defined $book_data->{image}{optionsFormat}{end} &&
@@ -194,11 +202,16 @@ sub get_book {
         $book->{price} = '$0';
     }
 
-    if ($self->dl->fetch($book->{serial_num})) {
-        return $book;
+    my $fetch_book = $self->dl->fetch($book->{serial_num});
+    if ($fetch_book) {
+        unless (!$fetch_book->{ZPUBLISHDATE} || $fetch_book->{ZPUBLISHDATE} eq '-978278400') {
+            # core data timestamps begin at unix epoch + 31 years
+            $book->{published} = $fetch_book->{ZPUBLISHDATE}+978307200;
+            return $book;
+        }
     }
 
-    print "# $book->{title}\n";
+    print "# $book->{title} - $book->{url}\n";
 
     $self->cx_other_data($book);
 
@@ -232,7 +245,7 @@ sub cx_other_data {
         my $tree = HTML::TreeBuilder->new_from_content($self->content);
 
         if ($tree->find_by_attribute(class => 'errorPage')) {
-            $book->{url} = 'https://www.comixology.com/my-books/library/';
+            #$book->{url} = 'https://www.comixology.com/my-books/library/';
             $book->{genres} = ['Unavailable'];
         }
         else {

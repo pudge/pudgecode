@@ -1,8 +1,11 @@
 package Pudge::SonyEntertainmentNetwork;
 
+#https://commerce.api.np.km.playstation.net/commerce/api/v1/users/me/internal_entitlements?start=0&size=3200&fields=game_meta%2Cdrm_def%2Cdrm_def.content_type&revision=0&access_token=...
+
 use warnings;
 use strict;
 use feature ':5.10';
+use utf8;
 
 use Cwd 'cwd';
 use JSON::XS qw(encode_json decode_json);
@@ -101,6 +104,10 @@ my $json = $self->_file_input('internal_entitlements.json');
 
 my @list;
 for (reverse @{$data->{entitlements}}) {
+    # entitlement_type 2=vita/PS3, 5=PS4
+    next unless $_->{drm_def} || $_->{entitlement_attributes};
+    next if $_->{feature_type} == 1; # 0=add-on, 1=demo/app, 3=game
+#    next if $_->{feature_type} == 0 && $_->{entitlement_type} == 2; # 0=add-on, 1=demo/app, 3=game
     if ($_->{drm_def}) {
         push @list, $_->{drm_def};
     }
@@ -113,8 +120,6 @@ for (reverse @{$data->{entitlements}}) {
             contentName         => $_->{game_meta}{name},
             name                => $_->{game_meta}{name},
         };
-        # entitlement_type 2=vita/PS3, 5=PS4
-        next if $_->{feature_type} == 1; # 0=add-on, 1=demo/app, 3=game
         push @list, $x;
     }
 }

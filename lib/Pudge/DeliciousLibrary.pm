@@ -148,6 +148,7 @@ my %MAP = (
     length      => 'ZBOXLENGTHININCHES',
     price       => 'ZPRICE',
     isbn        => 'ZISBN',
+    used        => 'ZUSED',
     edition     => [\&_list, 'ZEDITIONSCOMPOSITESTRING'],
     features    => [\&_list, 'ZFEATURESCOMPOSITESTRING'],
     creators    => [\&_list, 'ZCREATORSCOMPOSITESTRING'],
@@ -198,7 +199,7 @@ sub new {
 sub _prep_attrs {
     my($self, $type, $attrs) = @_;
 
-    croak "no data" unless defined $attrs && ref $attrs && keys %$attrs; 
+    croak "no data" unless defined $attrs && ref $attrs; # && keys %$attrs;
 
     my $typeh;
     if (defined $type) {
@@ -269,10 +270,20 @@ sub create {
 
     my($data, $typeh, $img, $desc) = $self->_prep_attrs($type, $attrs);
 
-    my $id = $self->_get_existing_record_id($data, $old_serial_num);
-    if ($id) {
-        return $self->_update($id, $data, $img, $desc);
+    my $sn = $old_serial_num // $data->{ZSERIALNUMBER}; #print "$sn!!!\n";
+
+    if ($sn) {
+        my $id = $self->_get_existing_record_id($data, $sn);
+        if ($id) {
+            return $self->_update($id, $data, $img, $desc);
+        }
     }
+
+#     print "$old_serial_num : $data->{ZSERIALNUMBER}\n";
+#     my $id = $self->_get_existing_record_id($data, $old_serial_num);
+#     if ($id) {
+#         return $self->_update($id, $data, $img, $desc);
+#     }
 
     for my $k (keys %$typeh) {
         $data->{$k} = $typeh->{$k} unless exists $data->{$k};
@@ -294,7 +305,7 @@ sub create {
         Z2_CONCEPTUALMEDIUM => delete($data->{Z2_CONCEPTUALMEDIUM}) // $DESC_DEFAULTS{Z2_CONCEPTUALMEDIUM},
     );
 
-    $id = $self->_do_insert(ZABSTRACTMEDIUM => $data);
+    my $id = $self->_do_insert(ZABSTRACTMEDIUM => $data);
     $self->_insert_image($id, $img);
     $self->_insert_desc($id, \%desc);
 
@@ -380,6 +391,8 @@ sub _do_update {
 sub _do_insert {
     my($self, $table, $data) = @_;
     my($keys, $vals, $bind) = _ins_prep($data);
+#use Carp 'cluck';
+#cluck "$table\n";
     $self->dbh->do("insert into $table ($keys) values ($vals)", {}, @$bind);
     my $id = $self->dbh->func('last_insert_rowid');
 
